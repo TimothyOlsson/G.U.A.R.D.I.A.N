@@ -1,0 +1,20 @@
+[workspace]
+members = [ "archive/egui_test",
+    "guardian_core"
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+description = "Genetic Unsupervised Asynchronous Recurrent Distributed Interconnected Artificial Neurons"
+edition = "2021"
+authors = ["Timothy Bergström <timothy.bergstrom@gmail.com>"]
+homepage = ""
+repository = ""
+license-file = "LICENSE.txt"
+exclude = ["Cargo.lock", ".git/*", "archive/*", ".vscode/*"]
+
+#[workspace.dependencies]
+
+[profile.release]
+debug = true  # TODO: Remove this when not debugging

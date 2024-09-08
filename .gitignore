@@ -1,0 +1,8 @@
+__pycache__/
+*vcpkg*
+*boost*
+*target*
+*Cargo.lock
+archive/*
+
+**/data.js

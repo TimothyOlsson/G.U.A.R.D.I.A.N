@@ -1,0 +1,9 @@
+{
+    "python.pythonPath": "C:\\Users\\timot\\AppData\\Local\\Programs\\Python\\Python38\\python.exe",
+    "git.ignoreLimitWarning": true,
+    "cmake.configureOnOpen": true,
+    "rust-analyzer.diagnostics.disabled": [
+        "macro-error"
+    ],
+    "rust-analyzer.showUnlinkedFileNotification": false
+}

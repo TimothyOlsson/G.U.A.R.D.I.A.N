@@ -1,0 +1,23 @@
+[package]
+name = "guardian_website"
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+description.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+exclude.workspace = true
+
+[[bin]]
+name = "guardian_website_bin"
+path = "src/main.rs"
+
+[dependencies]
+axum = "0.7.5"
+include_dir = "0.7.3"
+mime_guess = "2.0.4"
+tracing-subscriber = { workspace = true }
+tracing = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }

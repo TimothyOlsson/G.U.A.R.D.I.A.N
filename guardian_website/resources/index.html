@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html>
+
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#404040">
+
+<!-- Disable zooming: -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+
+<link rel="icon" href="/assets/guardian.ico">   
+
+<head>
+    <meta charset="utf-8">
+    <title>G.U.A.R.D.I.A.N</title>
+
+    <style>
+        html {
+            /* Remove touch delay: */
+            touch-action: manipulation;
+        }
+        body {
+            /* Dark mode background color for what is not covered by the egui canvas,
+                or where the egui canvas is translucent. */
+            background: #282a36;
+        }
+
+        /* Allow canvas to fill entire web page: */
+        html,
+        body {
+            overflow: hidden;
+            margin: 0 !important;
+            padding: 0 !important;
+            height: 100%;
+            width: 100%;
+        }
+        /* Position canvas in center-top: */
+        canvas {
+            margin-right: auto;
+            margin-left: auto;
+            display: block;
+            position: absolute;
+            top: 0%;
+            left: 50%;
+            transform: translate(-50%, 0%);
+        }
+        .centered {
+            margin-right: auto;
+            margin-left: auto;
+            display: block;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #f0f0f0;
+            font-size: 24px;
+            font-family: Ubuntu-Light, Helvetica, sans-serif;
+            text-align: center;
+        }
+        /* ---------------------------------------------- */
+        /* Loading animation from https://loading.io/css/ */
+        .lds-dual-ring {
+            display: inline-block;
+            width: 24px;
+            height: 24px;
+        }
+        .lds-dual-ring:after {
+            content: " ";
+            display: block;
+            width: 24px;
+            height: 24px;
+            margin: 0px;
+            border-radius: 50%;
+            border: 3px solid #fff;
+            border-color: #fff transparent #fff transparent;
+            animation: lds-dual-ring 1.2s linear infinite;
+        }
+        @keyframes lds-dual-ring {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+
+<body>
+
+    <!-- The WASM code will resize the canvas dynamically -->
+    <canvas id="guardian_ai"></canvas>
+    <div class="centered" id="center_text">
+        <p style="font-size:16px">
+            Loading…
+        </p>
+        <div class="lds-dual-ring"></div>
+    </div>
+
+    <script>
+        // The `--no-modules`-generated JS from `wasm-bindgen` attempts to use
+        // `WebAssembly.instantiateStreaming` to instantiate the wasm module,
+        // but this doesn't work with `file://` urls. This example is frequently
+        // viewed by simply opening `index.html` in a browser (with a `file://`
+        // url), so it would fail if we were to call this function!
+        //
+        // Work around this for now by deleting the function to ensure that the
+        // `no_modules.js` script doesn't have access to it. You won't need this
+        // hack when deploying over HTTP.
+        delete WebAssembly.instantiateStreaming;
+    </script>
+
+    <script>
+        var browser = (function() {
+            var test = function(regexp) {return regexp.test(window.navigator.userAgent)}
+            switch (true) {
+                case test(/edg/i): return "Microsoft Edge";
+                case test(/trident/i): return "Microsoft Internet Explorer";
+                case test(/firefox|fxios/i): return "Mozilla Firefox";
+                case test(/opr\//i): return "Opera";
+                case test(/ucbrowser/i): return "UC Browser";
+                case test(/samsungbrowser/i): return "Samsung Browser";
+                case test(/chrome|chromium|crios/i): return "Google Chrome";
+                case test(/safari/i): return "Apple Safari";
+                default: return "Other";
+        }})();
+    </script>
+
+    <script>
+        console.info("Browser is:", browser);
+        if (browser == "Mozilla Firefox") {
+            var head = document.getElementsByTagName('head')[0];
+            var js = document.createElement("script");
+            js.type = "module";
+            js.src = "/workers-polyfill.js";  // NOTE: Seems like a top-level here is required here!!
+            head.appendChild(js);
+            console.info("Detected Firefox, started workers-polyfill for web worker.");
+            console.info("See https://bugzilla.mozilla.org/show_bug.cgi?id=1247687");
+            console.info("https://caniuse.com/?search=module%20worker");
+            console.info("When this is fixed, this function can be removed");
+        }
+    </script>
+    <script src='/pkg/guardian_ai.js' type="module"></script>
+
+    <script type="module">
+
+        // Check for compatibility
+        console.debug("Checking browser compatibility…");
+
+        // Multithreading
+        let can_use_multi_threading = multithreading_enabled();
+        if (can_use_multi_threading) {
+            console.info("Multithreading enabled!");
+            console.debug("Threads available:", navigator.hardwareConcurrency);
+        } else {
+            console.warn("Multithreading not enabled");
+        }
+
+        // Webgpu
+        let can_use_webgpu = false;
+        if ("gpu" in navigator) {
+            can_use_webgpu = true;
+            console.info("Webgpu enabled!");
+        } else {
+            console.warn("Webgpu not enabled");
+        }
+
+        function multithreading_enabled() {
+            // Check SharedArrayBuffer
+            if (typeof SharedArrayBuffer !== 'function') {
+                console.debug("SharedArrayBuffer not enabled");
+                return false;
+            } else {
+                console.debug("SharedArrayBuffer ok");
+            }
+            if(!crossOriginIsolated) {
+                console.debug("CrossOriginIsolated not enabled");
+                return false;
+            } else {
+                console.debug("CrossOriginIsolated enabled");
+            }
+            // Test for bulk memory operations with passive data segments
+            // (module (memory 1) (data passive ""))
+            const buf = new Uint8Array([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
+                                        0x05, 0x03, 0x01, 0x00, 0x01, 0x0b, 0x03, 0x01,
+                                        0x01, 0x00]);
+            if (!WebAssembly.validate(buf)) {
+                console.debug("Passive wasm memory not supported")
+                return false;
+            } else {
+                console.debug("Passive wasm memory supported!")
+            }
+            return true;
+        }
+
+        // TODO: Check if webrtc can be used! (should almost always work)
+
+        // We'll defer our execution until the wasm is ready to go.
+        // Here we tell bindgen the path to the wasm file so it can start
+        // initialization and return to us a promise when it's done.
+        import init, { wasm_start, WorkerPool } from "./pkg/guardian_ai.js";
+        init()
+         .then(on_wasm_loaded)
+         .catch(on_wasm_error)
+
+        async function on_wasm_loaded() {
+            var pool = null;
+            var n_threads = 1;
+            if (!can_use_multi_threading && !can_use_webgpu) {
+                console.warn("Multithreading and WebGpu are not enabled.\n \
+                              This can cause serious performance degradations.\n \
+                              It is not recommended to continue from here");
+            } else if (!can_use_multi_threading) {
+                console.warn("Multithreading not enabled, but WebGpu enabled.\n \
+                              This can cause performance degradations.");
+            } else {
+                pool = new WorkerPool(navigator.hardwareConcurrency + 1);  // +1 because Guardian will be run in the pool. Seems just spawning 1 also works
+                n_threads = navigator.hardwareConcurrency;
+                console.info("Created Worker Pool");
+            }
+
+            console.debug("Starting app…");
+            wasm_start(can_use_webgpu,
+                       n_threads,
+                       pool);
+            console.debug("App started.");
+            document.getElementById("center_text").remove();
+        }
+
+        function on_wasm_error(error) {
+            console.error("Failed to start: " + error);
+            document.getElementById("center_text").innerHTML = `
+                <p>
+                    An error occurred during loading:
+                </p>
+                <p style="font-family:Courier New">
+                    ${error}
+                </p>
+                <p style="font-size:14px">
+                    Make sure you use a modern browser with WebGL and WASM enabled.
+                </p>`;
+        }
+    </script>
+
+</body>
+
+</html>

@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>G.U.A.R.D.I.A.N visualization</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.2/dist/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts-gl@2.0.9/dist/echarts-gl.min.js"></script>
+    <script src="./data.js"></script>
+    <style>
+        html, body {
+          height: 100%;
+          margin: 0;
+        }
+        .container {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+        }
+        .item {
+          margin: auto;
+        }
+      </style>
+  </head>
+  <body>
+    <div style="width: 100%; height: 100%; overflow: hidden;">
+        <div class="item" id="chart" style="width: 65%; height: 100%; float:left"></div>
+        <div class="item" id="chart_details" style="width: 35%; height: 100%; float:right;"></div>
+    </div>
+
+    <script type="text/javascript">
+
+
+var lightgreen = '#93c47d';
+var lightblue = '#3d85c6';
+var lightred = '#e06666';
+
+// TODO: Consider typescript instead!
+// https://stackoverflow.com/questions/14015899/embed-typescript-code-in-an-html-document
+
+// TODO: Change var to let!
+
+
+// Compare complex objects
+function compare(a, b) {
+    return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function clear_chart(chart) {
+    chart.setOption({series: []}, true);
+}
+
+function circle(r, id, total) {
+    var x = r * Math.cos( 2.0 * Math.PI * id / total);
+    var y = r * Math.sin( 2.0 * Math.PI * id / total);
+    return [x, y];
+}
+
+// https://stackoverflow.com/questions/966225/how-can-i-create-a-two-dimensional-array-in-javascript
+function create_array(length) {
+    var arr = new Array(length || 0),
+        i = length;
+    if (arguments.length > 1) {
+        var args = Array.prototype.slice.call(arguments, 1);
+        while(i--) arr[length-1 - i] = create_array.apply(this, args);
+    }
+    return arr;
+}
+
+function create_neuron(neuron_id, neuron_count) {
+    var nodes = [];
+    var links = [];
+
+    var node_count = neuron_count * n_nodes_per_neuron;
+    var node_offset = neuron_id * n_nodes_per_neuron;
+
+    // Neuron state
+    var r = 10.0;
+    var neuron_state_placement = (node_offset + (n_nodes_per_neuron / 2));
+    var [x, y] = circle(1.3 * r, neuron_state_placement, node_count);
+    nodes.push({
+        name: neuron_id,
+        symbol: "roundRect",
+        symbolSize: 15,
+        label: {
+            show: true,
+        },
+        type: "neuron",
+        x: x,
+        y: y
+    });
+
+
+    for (var node_id = 0; node_id < n_nodes_per_neuron; node_id++) {
+        var node_name = [neuron_id, node_id];
+        var [x, y] = circle(1.0 * r, (node_offset + node_id), node_count);
+        nodes.push({
+            name: node_name,
+            symbolSize: 4,
+            type: "node",
+            x: x,
+            y: y,
+        })
+        var curveness = 0.25;
+        var half_nodes = (n_nodes_per_neuron / 2);
+        var diff = node_id - half_nodes;
+        curveness = curveness * (diff / half_nodes);
+        links.push({
+            source: node_name,
+            target: neuron_id + '',
+            symbol: ['none', 'none'],
+            lineStyle: {
+                type: "dotted",
+                width: 1.0,
+                opacity: 1.0,
+                curveness: curveness
+            },
+            type: "neuron node binding"
+        });
+    }
+    return [nodes, links];
+}
+
+function create_neurons(neuron_count) {
+    var links = [];
+    var nodes = [];
+    for (var neuron_id = 0; neuron_id < neuron_count; neuron_id++) {
+        var [neuron_nodes, neuron_links] = create_neuron(neuron_id, neuron_count);
+        nodes = nodes.concat(neuron_nodes);
+        links = links.concat(neuron_links);
+    }
+    return [nodes, links];
+}
+
+function focus_neuron(neuron_id) {
+    nip.selection_type = "neuron";
+    nip.selections.neuron = neuron_id;
+    nip.level = 1;
+    var r = n_nodes_per_neuron/4;
+    var [nodes, _] = create_neuron(neuron_id, 1);
+    nodes.forEach(node => {
+        node.symbolSize = 20;
+    });
+    nodes[0].symbolSize = 60;  // TODO: Consider changing location
+    var option = chart.getOption();
+    var series = option.series[0];
+    series.data = nodes;
+    option.legend[0].selected["neuron-node"] = false;
+    chart.setOption(option);
+    update_chart();
+}
+
+function focus_node(node_id) {
+    nip.selection_type = SelectionType.Node;
+    nip.selections.node = node_id;
+    var option = chart.getOption();
+    var series = option.series[0];
+    var nodes = series.data;
+    for (const [index, node] of nodes.entries()) {
+        if (node.type == "neuron") {
+            node.x = -5.0;
+            node.y = node.name;
+        } else if ( compare(node.name,  node_id) )  {  // Selected node
+            node.x = n_nodes_per_neuron / 2;
+            node.y = -5.0;
+        } else {
+            node.x = node.name[1];
+            node.y = node.name[0];
+        }
+    }
+    series.data = nodes;
+    chart.setOption(option);
+    update_chart();
+}
+
+function find_id(connection, connections) {
+    var index = 0;
+    var [neuron, node] = connection.source;
+    for (c_search of connections[neuron][node]) {
+        if ( compare(connection, c_search) ) {
+            id = index;
+            break;
+        }
+        index++;
+    }
+    if (id == null) {
+        // failed
+        console.log("FAILED");
+    }
+    return id;
+}
+
+function focus_connection(connection) {
+    // Check if intra, there are multiple connections for that
+    nip.selection_type = SelectionType.Connection;
+    nip.selections.connection = connection;
+    nip.selection = connection;
+
+}
+
+function plot_neuron_details() {
+    clear_chart(chart_details);
+    var option = {
+        dataZoom: [
+            {
+                "type": "inside",
+                xAxisIndex: [1],
+            },
+            {
+                xAxisIndex: [1],
+            }
+        ],
+        grid: [
+            {
+                bottom: '56%',
+            },
+            {
+                top: '56%',
+            },
+        ],
+        xAxis: [
+            {
+                type: 'category',
+                data: [...Array(node_size).keys()],
+                gridIndex: 0,
+            },
+            {
+                type: 'category',
+                data: timesteps,
+                gridIndex: 1,
+            }
+        ],
+        yAxis: [
+            {
+                type: 'value',
+                min: 0.0,
+                max: 255,
+                gridIndex: 0,
+            },
+            {
+                type: 'value',
+                min: 0.0,
+                max: 255,
+                gridIndex: 1,
+            },
+        ],
+        tooltip: {},
+        series: [],
+    };
+
+    // Boxplot
+    var boxplot_data = create_array(node_size, n_nodes_per_neuron);
+    for (let i = 0; i < node_size; i++) {
+        for (let node = 0; node < n_nodes_per_neuron; node++) {
+            var state = node_states[nip.timestep][nip.selections.neuron][node];
+            boxplot_data[i][node] = state[i];
+        }
+    }
+    option.series.push(
+        {
+            type: 'boxplot',
+            name: "node_states_box",
+            data: boxplot_data,
+            xAxisIndex: 0,
+            yAxisIndex: 0,
+            //universalTransition: true
+        }
+    );
+
+    // Neuron state
+    var lines = create_array(timesteps.length, neuron_state_size);
+    for (timestep of timesteps) {
+        var state = neuron_states[timestep][nip.selections.neuron];
+        for (let i = 0; i < neuron_state_size; i++) {
+            lines[i][timestep] = state[i];
+        }
+    }
+    for (let i = 0; i < node_size; i++) {
+        option.series.push({
+            name: i,
+            type: 'line',
+            data: lines[i],
+            xAxisIndex: 1,
+            yAxisIndex: 1,
+        });
+    }
+    chart_details.setOption(option, true);
+}
+
+function plot_node_details() {
+    clear_chart(chart_details);
+    var option = {
+        series: []
+    };
+    var lines = create_array(node_size, timesteps.length);
+    var [neuron, node] = nip.selections.node;
+    for (timestep of timesteps) {
+        var state = node_states[timestep][neuron][node];
+        for (let i = 0; i < node_size; i++) {
+            lines[i][timestep] = state[i];
+        }
+    }
+    for (let i = 0; i < node_size; i++) {
+        option.series.push({
+            type: 'line',
+            data: lines[i]
+        });
+    }
+    option.xAxis = {
+        type: 'category',
+        data: timesteps
+    };
+    option.yAxis = {
+        type: 'value',
+        min: 0.0,
+        max: 255,
+    };
+    option.dataZoom = [
+        {
+            "type": "inside"
+        },
+        {}
+    ];
+    chart_details.setOption(option);
+}
+
+function update_selected_connection() {
+    var connection = nip.selection.connection;
+    if (connection.connection_id == null) {
+        // This is an interconnection or pending interconnection
+        var [neuron, node] = connection.source;
+        var connections = [];
+        if (connection.type == "inter") {
+            connections = interconnections[nip.timestep];
+        } else if (connection.type == "p_inter") {
+            connections = pending_interconnections[nip.timestep];
+        }
+        nip.selections.connection = connections[neuron][node];
+    } else {
+        var [neuron, node] = connection.source;
+        var connections = [];
+        if (connection.type == "intra") {
+            connections = intraconnections[nip.timestep];
+        } else if (connection.type == "p_intra") {
+            connections = pending_intraconnections[nip.timestep];
+        }
+        var updated_connection = connections[neuron][node][id];
+        nip.selections.connection = connections[neuron][node];
+    }
+}
+
+function plot_connection_details() {
+    clear_chart(chart_details);
+    var connection = nip.selection;
+    var id = connection.connection_id;
+    var strength = connection.strength;
+    var pushback = connection.pushback;
+    var force = get_force(connection);
+
+    var [neuron, node] = connection.source;
+
+    var strengths = [strength];
+    var forces = [force];
+    var pushbacks = [pushback];
+
+    // TODO: This thing is really messy
+    if (connection.type == "inter") {
+        var categories = [`Selected\n[${connection.source}] -> [${connection.target}]`];
+        var connections = interconnections[nip.timestep];
+        if (connection.connected) {
+            var connection_b = get_other_interconnection(connection, connections);
+            categories.push(`Connected\n[${connection_b.source}] -> [${connection_b.target}]`);
+            strengths.push(connection_b.strength);
+            forces.push(get_force(connection_b));
+            pushbacks.push(connection_b.pushback);
+        }
+    } else if (connection.type == "p_inter") {
+        var categories = [`Selected\n[${connection.source}] -> [${connection.target}]`];
+        var connections = interconnections[nip.timestep];
+        var connection_b = get_other_interconnection(connection, connections);
+        if (connection_b.connected) {
+            categories.push(`[${connection_b.source}] -> [${connection_b.target}]`);
+            strengths.push(connection_b.strength);
+            forces.push(get_force(connection_b));
+            pushbacks.push(connection_b.pushback);
+            var connection_c = get_other_interconnection(connection_b, connections);
+            categories.push(`[${connection_c.source}] -> [${connection_c.target}]`);
+            strengths.push(connection_c.strength);
+            forces.push(get_force(connection_c));
+            pushbacks.push(connection_c.pushback);
+        } else {
+            categories.push(`[${connection_b.source}] -> null`);
+            strengths.push(0);
+            forces.push(0);
+            pushbacks.push(0);
+        }
+    } else if (connection.type == "intra") {
+        var connections = pending_intraconnections[nip.timestep];
+        var categories = [`Connection ${id}\n[${connection.source}] -> [${connection.target}]`];
+        var pending = connections[neuron][node][id];
+        categories.push(`Pending ${id}\n[${pending.source}] -> [${pending.target}]`);
+        strengths.push(pending.strength);
+        forces.push(get_force(pending));
+        pushbacks.push(pending.pushback);
+    } else if (connection.type == "p_intra") {
+        var connections = intraconnections[nip.timestep];
+        var categories = [`Pending ${id}\n[${connection.source}] -> [${connection.target}]`];
+        var not_pending = connections[neuron][node][id];  // TODO: Change name
+        categories.push(`Connection ${id}\n[${not_pending.source}] -> [${not_pending.target}]`);
+        strengths.push(not_pending.strength);
+        forces.push(get_force(not_pending));
+        pushbacks.push(not_pending.pushback);
+    }
+    pushbacks = pushbacks.map(pushback => -1 * pushback);  // Flip
+    var option = {
+        xAxis: {
+            type: 'category',
+            data: categories
+        },
+        yAxis: {
+            type: 'value',
+            min: -255,
+            max: 255,
+        },
+        tooltip: {},
+        label : {show: true},
+        series: [
+            {
+                type: 'bar',
+                name: 'strength',
+                data: strengths,
+                color: lightgreen
+            },
+            {
+                type: 'bar',
+                name: 'force',
+                data: forces,
+                color: lightblue,
+            },
+            {
+                type: 'bar',
+                name: 'pushback',
+                data: pushbacks,
+                color: lightred
+            },
+        ]
+    };
+    chart_details.setOption(option);
+}
+
+function get_force(connection) {
+    return Math.max((connection.strength - connection.pushback), 0.0);
+}
+
+function get_other_interconnection(connection, connections) {
+    var [neuron_b, node_b] = connection.target;
+    var connection_b = connections[neuron_b][node_b];
+    return connection_b;
+}
+
+function is_connected(connection, connections) {
+    var [neuron_a, node_a] = connection.source;
+    var [neuron_b, node_b] = connection.target;
+    var connection_b = connections[neuron_b][node_b];
+    var [neuron_c, node_c] = connection_b.target;
+    var connected = false;
+    if (neuron_c == neuron_a && node_c == node_a) {
+        connected = true;
+    }
+    return connected;
+}
+
+// Only show highest
+function is_higher(connection_a, connection_b) {
+    var [neuron_a, node_a] = connection_a.source;
+    var [neuron_b, node_b] = connection_b.source;
+    var higher = true;
+    if (neuron_b > neuron_a) {
+        higher = false;
+    } else if (neuron_b == neuron_a && node_b > node_a) {
+        higher = false;
+    }
+    return higher;
+}
+
+function init_links() {
+    var link_width_k = 1.5 / 255;  // 0 to 255
+    var link_width_m = 0.25;
+    var index = 0;
+    for (var connection_type of [interconnections, pending_interconnections, intraconnections, pending_intraconnections]) {
+        for (var timestep of timesteps) {
+            var connections = connection_type[timestep];
+            for (var connection of connections.flat(Infinity)) {
+                connection.lineStyle = {};
+
+                // Add types, symbols and colors
+                var forward = ['none', 'arrow'];
+                var double = ['arrow', 'arrow'];
+
+                // TODO: Consider enums!
+                if (index == 0) {
+                    connection.type = "inter";
+                    connection.symbol = double;
+                } else if (index == 1) {
+                    connection.type = "p_inter";
+                    connection.symbol = forward;
+                    connection.lineStyle.color = "yellow";
+                } else if (index == 2) {
+                    connection.type = "intra";
+                    connection.symbol = forward;
+                    connection.lineStyle.color = lightblue;
+                    connection.connection_id = find_id(connection, connections);  // id reserved
+                } else if (index == 3) {
+                    connection.type = "p_intra";
+                    connection.symbol = forward;
+                    connection.lineStyle.color = "yellow";
+                    connection.connection_id = find_id(connection, connections);  // id reserved
+                }
+                connection.lineStyle.color = colors[index + 1];
+
+                // Calculate force
+                var force = 0;
+
+                // TODO: Consider this as a function
+                if (index == 0) {
+                    connection.connected = is_connected(connection, connections);
+                    connection.show = true;
+                    if (connection.connected) {
+                        var connection_b = get_other_interconnection(connection, connections);
+                        connection.show = is_higher(connection, connection_b);
+                        if (!connection.show) {
+                            connection.lineStyle.color = lightblue;
+                        }
+                        var force_a = get_force(connection);
+                        var force_b = get_force(connection_b);
+                        force = Math.max(force_a, force_b);
+                    } else {
+                        // Not connected, but can be used for pending search
+                        connection.lineStyle.type = "dashed";
+                        connection.lineStyle.color = lightred;
+                        connection.symbol = forward;
+                        force = 127;
+                    }
+                } else {
+                    force = get_force(connection);
+                }
+                // Calculate width
+                var width = link_width_k * force + link_width_m;
+                connection.lineStyle.width = width;
+            }
+        }
+        index++;
+    }
+}
+
+function init_chart() {
+    var option = {
+        toolbox:  {
+            left: 'right',
+            top: 'right',
+            itemSize: 25,
+            top: 55,
+            feature: {
+                restore: {}
+            }
+        },
+        timeline: {
+            data: timesteps,
+            playInterval: 1000,
+            axisType: "category",
+        },
+        legend: {
+            data: [
+                { name: 'interconnections', icon: 'roundRect' },
+                { name: 'pending interconnections', icon: 'roundRect' },
+                { name: 'intraconnections', icon: 'roundRect' },
+                { name: 'pending intraconnections', icon: 'roundRect' },
+                { name: 'neuron-node', icon: 'roundRect' },
+            ],
+            selected: {
+                'pending interconnections': false,
+                'pending intraconnections': false
+            }
+        },
+        series: [
+            {
+                autoCurveness: true,
+                edgeSymbolSize: [10, 10],
+                name: 'graph',
+                type: 'graph',
+                //layout: 'circular',
+                zoom: 1.0,
+                emphasis: {
+                    focus: 'adjacency',
+                    label: {
+                        position: 'right',
+                        show: true
+                    }
+                },
+                data: base_nodes,
+                links: base_links,
+                roam: true,
+            },
+            // TODO: Is there a better way?
+            {
+                type: 'graph',
+                name: 'interconnections',
+            },
+            {
+                type: 'graph',
+                name: 'pending interconnections',
+            },
+            {
+                type: 'graph',
+                name: 'intraconnections',
+            },
+            {
+                type: 'graph',
+                name: 'pending intraconnections',
+            },
+            {
+                type: 'graph',
+                name: 'neuron-node',
+            }
+        ],
+    };
+    chart.setOption(option);
+    update_chart();
+}
+
+function init_chart_details() {
+    chart_details.setOption({
+        xAxis: {
+            type: 'category',
+            data: timesteps
+        },
+        yAxis: {
+            type: 'value',
+            min: 0.0,
+            max: 255,
+        }
+    });
+}
+
+function update_chart_details() {
+    if (nip.selection_type == SelectionType.None) {
+        return;
+    }
+    switch (nip.selection_type) {
+        case SelectionType.Neuron:
+            plot_neuron_details();
+            break;
+        case SelectionType.Node:
+            plot_node_details();
+            break;
+        case SelectionType.Connection:
+            update_selected_connection();
+            plot_connection_details();
+            break;
+    }
+}
+
+function update_chart() {
+    const option = chart.getOption();
+    var legend = option.legend[0];
+    var keys = legend.data.map((item) =>  item.name);
+    var selected = legend.selected;
+
+    // Fix selected
+    for (key of keys) {
+        if (selected[key] == null) {
+            selected[key] = true;
+        }
+    }
+
+    var links = [];
+    for (key of keys) {
+        var is_selected = selected[key];
+        if (!is_selected) {
+            continue;
+        }
+        if (nip.level == 0 && key.includes("intra")) {
+            continue;
+        }
+        var data = legend_map[key];
+        var connections = [];
+        if (Array.isArray(data[nip.timestep])) {
+            var connections = data;
+            data = data[nip.timestep].flat(Infinity);
+        }
+
+        // A bit messy
+        if (nip.selections.node != null && key == "neuron-node") {
+            continue;
+        }
+
+        if (nip.selections.node != null) {  // TODO: And level
+            var selected_node = nip.selections.node;
+            var connected_node = data[nip.timestep]
+            // TODO: Handle targets and show their main connection!
+            data = data.filter(link => {
+                var is_target = compare(selected_node, link.target);
+                var is_source = compare(selected_node, link.source);
+                return ( is_target || is_source );
+            });
+        } else if (key == "interconnections") {
+            data = data.filter(link => link.connected);
+        }
+
+        if (key == "interconnections") {
+            data = data.filter(link => link.show);
+        }
+
+        links = links.concat(data);
+    }
+
+    const series = option.series[0];
+    series.links = links;
+    chart.setOption(option);
+}
+
+
+// Globals
+
+const SelectionType = {
+    None: null,
+	Neuron: "neuron",
+	Node: "node",
+	Connection: "connection",
+}
+
+// network_interaction_params
+var nip = {
+    level: 0,
+    timestep: 0,
+
+    // For details
+    selection_type: SelectionType.None,
+    selections: {
+        neuron: null,
+        node: null,
+        connection: null
+    },
+}
+var nip_default = JSON.parse(JSON.stringify(nip));
+
+var [base_nodes, base_links] = create_neurons(n_neurons);
+var legend_map = {
+    "interconnections": interconnections,
+    "pending interconnections": pending_interconnections,
+    "intraconnections": intraconnections,
+    "pending intraconnections": pending_intraconnections,
+    "neuron-node": base_links
+}
+
+var chart = echarts.init(document.getElementById('chart'), 'dark', { renderer: 'canvas' });
+var chart_details = echarts.init(document.getElementById('chart_details'), 'dark', { renderer: 'canvas' });
+
+var colors = [];
+if (chart._theme != null) {
+    colors = chart._theme.color;
+} else {
+    //colors = ["#4992ff", "#7cffb2", "#fddd60", "#ff6e76", "#58d9f9", "#05c091", "#ff8a45", "#8d48e3", "#dd79ff"];
+    colors = ['#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de', '#3ba272', '#fc8452', '#9a60b4', '#ea7ccc'];
+}
+
+init_links();
+init_chart();
+init_chart_details();
+
+chart.on('timelinechanged', function (params) {
+    nip.timestep = params.currentIndex;
+    update_chart();
+    update_chart_details();
+});
+
+// Show/hide the legend only trigger legendselectchanged event
+chart.on('legendselectchanged', function(params) {
+    update_chart();
+});
+
+chart.on('click', 'series', params => {
+    var data = params.data;
+    if (params.dataType === 'edge') {
+        console.log(data);
+        focus_connection(data);
+        plot_connection_details();
+    }
+    if (params.dataType === 'node') {
+        console.log(data);
+        if (data.type == "neuron") {
+            focus_neuron(data.name);
+            plot_neuron_details();
+        } else if (data.type == "node") {
+            focus_node(data.name);
+            plot_node_details();
+        }
+    }
+});
+
+chart.on('graphRoam', function (event) {
+    // TODO: Optimize to show only show visible nodes or similar
+});
+
+chart.on('restore', function (event) {
+    console.log("Restored");
+    nip = JSON.parse(JSON.stringify(nip_default));
+    clear_chart(chart_details);
+    init_chart_details();
+    update_chart();
+});
+
+
+        </script>
+    </body>
+</html>
