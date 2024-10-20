@@ -138,6 +138,9 @@ pub struct GuardianSettings {
 
     // IO
     // TODO: Add io sizes? Dynamic
+
+    // Genome
+    hidden_sizes: Vec<usize>
 }
 
 #[derive(Clone)]
@@ -186,6 +189,7 @@ impl Default for GuardianSettings {
             n_interconnected_nodes_search: 4,
             n_interconnected_neuron_search: 1,
             n_intraconnected_nodes_search: 1,
+            hidden_sizes: vec![128]
         }
     }
 }
@@ -201,6 +205,7 @@ impl GuardianSettings {
             n_interconnected_nodes_search: 1,
             n_interconnected_neuron_search: 1,
             n_intraconnected_nodes_search: 1,
+            hidden_sizes: vec![16]
         }
     }
 
@@ -214,6 +219,7 @@ impl GuardianSettings {
             n_interconnected_nodes_search: 4,
             n_interconnected_neuron_search: 1,
             n_intraconnected_nodes_search: 1,
+            hidden_sizes: vec![64, 64]
         }
     }
 }
