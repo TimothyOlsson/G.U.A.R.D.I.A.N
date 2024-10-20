@@ -61,15 +61,15 @@ pub struct InterConnection {
     pub pending_pushback: AtomicU8,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 /// Reduced index -> limits nodes per neuron, but it saves 4 bytes per internal connection which adds up to quite a lot
 pub struct IntraConnection {
-    pub index: AtomicU16,
-    pub pending_index: AtomicU16,
-    pub strength: AtomicU8,
-    pub pushback: AtomicU8,
-    pub pending_strength: AtomicU8,
-    pub pending_pushback: AtomicU8,
+    pub index: u16,
+    pub pending_index: u16,
+    pub strength: u8,
+    pub pushback: u8,
+    pub pending_strength: u8,
+    pub pending_pushback: u8,
 }
 
 impl Clone for Flags {
@@ -110,26 +110,6 @@ impl Clone for InterConnection {
     fn clone(&self) -> Self {
         let index = AtomicU32::new(self.index.load(Ordering::Relaxed));
         let pending_index = AtomicU32::new(self.pending_index.load(Ordering::Relaxed));
-        let strength = AtomicU8::new(self.strength.load(Ordering::Relaxed));
-        let pushback = AtomicU8::new(self.pushback.load(Ordering::Relaxed));
-        let pending_strength = AtomicU8::new(self.pending_strength.load(Ordering::Relaxed));
-        let pending_pushback = AtomicU8::new(self.pending_pushback.load(Ordering::Relaxed));
-        Self {
-            index,
-            pending_index,
-            strength,
-            pushback,
-            pending_strength,
-            pending_pushback,
-            ..*self
-        }
-    }
-}
-
-impl Clone for IntraConnection {
-    fn clone(&self) -> Self {
-        let index = AtomicU16::new(self.index.load(Ordering::Relaxed));
-        let pending_index = AtomicU16::new(self.pending_index.load(Ordering::Relaxed));
         let strength = AtomicU8::new(self.strength.load(Ordering::Relaxed));
         let pushback = AtomicU8::new(self.pushback.load(Ordering::Relaxed));
         let pending_strength = AtomicU8::new(self.pending_strength.load(Ordering::Relaxed));
@@ -229,22 +209,22 @@ impl InterConnection {
 
 impl IntraConnection {
     pub fn get_index(&self) -> usize {
-        self.index.load(Ordering::Relaxed) as usize
+        self.index as usize
     }
 
     pub fn get_pending_index(&self) -> usize {
-        self.pending_index.load(Ordering::Relaxed) as usize
+        self.pending_index as usize
     }
 
     pub fn get_strength_and_pushback(&self) -> (f32, f32) {
-        let strength = unpack(self.strength.load(Ordering::Relaxed));
-        let pushback = unpack(self.pushback.load(Ordering::Relaxed));
+        let strength = unpack(self.strength);
+        let pushback = unpack(self.pushback);
         (strength, pushback)
     }
 
     pub fn get_pending_strength_and_pushback(&self) -> (f32, f32) {
-        let strength = unpack(self.pending_strength.load(Ordering::Relaxed));
-        let pushback = unpack(self.pending_pushback.load(Ordering::Relaxed));
+        let strength = unpack(self.pending_strength);
+        let pushback = unpack(self.pending_pushback);
         (strength, pushback)
     }
 
@@ -259,40 +239,42 @@ impl IntraConnection {
     }
 
     pub fn get_bond_force(&self) -> f32 {
-        let bond_force = unpack(self.strength.load(Ordering::Relaxed));
+        let bond_force = unpack(self.strength);
         bond_force
     }
 
-    pub fn store_index(&self, index: usize) {
+    pub fn store_index(&mut self, index: usize) {
         assert!(index <= u16::MAX as usize);
-        self.index.store(index as u16, Ordering::Relaxed);
+        self.index = index as u16;
     }
 
-    pub fn store_pending_index(&self, index: usize) {
+    pub fn store_pending_index(&mut self, index: usize) {
         assert!(index <= u16::MAX as usize);
-        self.pending_index.store(index as u16, Ordering::Relaxed);
+        self.pending_index = index as u16;
     }
 
-    pub fn store_strength_and_pushback(&self, strength: f32, pushback: f32) {
-        self.strength.store(pack(strength), Ordering::Relaxed);
-        self.pushback.store(pack(pushback), Ordering::Relaxed);
+    pub fn move_pending_to_main(&mut self) {
+        self.index = self.pending_index;
+        self.strength = self.pending_strength;
+        self.pushback = self.pending_pushback;
+        self.pending_strength = 0;
+        self.pending_pushback = 0;
     }
 
-    pub fn move_pending_to_main(&self) {
-        self.index.store(self.pending_index.load(Ordering::Relaxed), Ordering::Relaxed);
-        self.strength.store(self.pending_strength.load(Ordering::Relaxed), Ordering::Relaxed);
-        self.pushback.store(self.pending_pushback.load(Ordering::Relaxed), Ordering::Relaxed);
+    pub fn store_strength_and_pushback(&mut self, strength: f32, pushback: f32) {
+        self.strength = pack(strength);
+        self.pushback = pack(pushback);
     }
 
-    pub fn store_pending_strength_and_pushback(&self, strength: f32, pushback: f32) {
-        self.pending_strength.store(pack(strength), Ordering::Relaxed);
-        self.pending_pushback.store(pack(pushback), Ordering::Relaxed);
+    pub fn store_pending_strength_and_pushback(&mut self, strength: f32, pushback: f32) {
+        self.pending_strength = pack(strength);
+        self.pending_pushback = pack(pushback);
     }
 
-    pub fn reset_pending(&self) {
-        self.pending_index.store(self.index.load(Ordering::Relaxed), Ordering::Relaxed);
-        self.pending_strength.store(0, Ordering::Relaxed);
-        self.pending_pushback.store(0, Ordering::Relaxed);
+    pub fn reset_pending(&mut self) {
+        self.pending_index = self.index;
+        self.pending_strength = 0;
+        self.pending_pushback = 0;
     }
 }
 
@@ -369,9 +351,10 @@ impl State {
 }
 
 impl Genome {
-    pub fn new(g_settings: &GuardianSettings, n_settings: &NetworkSettings) -> Self {
-        let default_hidden_sizes = vec![256, 256];
-
+    pub fn new(
+        g_settings: &GuardianSettings,
+        n_settings: &NetworkSettings
+    ) -> Self {
         // Interconnected
         let settings = ModelSettings::new(
             vec![
@@ -380,7 +363,7 @@ impl Genome {
                 g_settings.node_size,
                 g_settings.node_size
             ],
-            default_hidden_sizes.clone(),
+            g_settings.hidden_sizes.clone(),
             vec![g_settings.node_size],
         ).unwrap();  // We know that this is ok
         let interconnected_node_state_update = Model::new(settings).unwrap();
@@ -392,7 +375,7 @@ impl Genome {
                 g_settings.node_size,
                 g_settings.node_size,
             ],
-            default_hidden_sizes.clone(),
+            g_settings.hidden_sizes.clone(),
             vec![
                 g_settings.node_size,
                 g_settings.node_size
@@ -406,7 +389,7 @@ impl Genome {
                 g_settings.neuron_state_size,
                 g_settings.node_size,
             ],
-            default_hidden_sizes.clone(),
+            g_settings.hidden_sizes.clone(),
             vec![
                 g_settings.neuron_state_size,
                 g_settings.node_size
@@ -424,7 +407,7 @@ impl Genome {
                 1, // Strength
                 1, // Pushback
             ],
-            default_hidden_sizes.clone(),
+            g_settings.hidden_sizes.clone(),
             vec![
                 1, 1, 1,
                 // Strength, Pushback, Gradient
@@ -441,7 +424,7 @@ impl Genome {
                 1, // Strength
                 1, // Pushback
             ],
-            default_hidden_sizes.clone(),
+            g_settings.hidden_sizes.clone(),
             vec![
                 1, 1, 1,
                 // Strength, Pushback, Gradient

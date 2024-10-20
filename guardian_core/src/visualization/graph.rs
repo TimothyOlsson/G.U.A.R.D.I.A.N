@@ -73,8 +73,8 @@ pub fn visualize_network(state_history: Vec<State>, g_settings: &GuardianSetting
         // Add intraconnections
         let connections = state.intra_connections.indexed_iter().map(|((neuron, node, _), connection)| {
             let target_node = connection.get_index();
-            let strength = connection.strength.load(Ordering::Relaxed);
-            let pushback = connection.pushback.load(Ordering::Relaxed);
+            let strength = connection.strength;
+            let pushback = connection.pushback;
             format!("{{ source: [{neuron}, {node}], target: [{neuron}, {target_node}], strength: {strength}, pushback: {pushback} }}")
         })
         .collect();
@@ -85,8 +85,8 @@ pub fn visualize_network(state_history: Vec<State>, g_settings: &GuardianSetting
         // Add pending interconnections
         let connections = state.intra_connections.indexed_iter().map(|((neuron, node, _), connection)| {
             let target_node = connection.get_pending_index();
-            let strength = connection.pending_strength.load(Ordering::Relaxed);
-            let pushback = connection.pending_pushback.load(Ordering::Relaxed);
+            let strength = connection.pending_strength;
+            let pushback = connection.pending_pushback;
             format!("{{ source: [{neuron}, {node}], target: [{neuron}, {target_node}], strength: {strength}, pushback: {pushback} }}")
         })
         .collect();
