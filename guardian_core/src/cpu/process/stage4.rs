@@ -98,7 +98,7 @@ fn flag_if_should_attempt_connection(network: &mut Network) {
         for (node_a_local_index, connection_a) in inter_connections.into_iter().enumerate() {
             let node_a_global_index = node_a_local_index + node_index_offset;
 
-            let pending_bond_force = connection_a.get_pending_connection_bond_force();
+            let pending_bond_force = connection_a.get_pending_bond_force();
             let mut bond_force_to_beat = 0.0;  // if negative, do not connect!
 
             // Check self (if connected)
@@ -175,7 +175,7 @@ pub fn attempt_connection(network: &mut Network) {
             //debug!("Node {node_a_global_index} will try to connect to Node {node_b_global_index}, which is not attempting new connection.");
 
             // If all ok, compete over the same connection
-            let pending_bond_force = connection_a.get_pending_connection_bond_force();
+            let pending_bond_force = connection_a.get_pending_bond_force();
             connection_b.add_maximum_bond_force(pending_bond_force);
             connection_b.store_index(0);
         }
@@ -222,7 +222,7 @@ pub fn compete_over_node(network: &mut Network) {
             let connection_b = get_inter_connection(neuron_b_index, node_b_local_index, inter_connections_source);
 
             // Only the highest bond-force will win
-            let pending_bond_force = connection_a.get_pending_connection_bond_force();
+            let pending_bond_force = connection_a.get_pending_bond_force();
             let bond_force = connection_b.get_bond_force();
             if pending_bond_force >= bond_force {
                 //debug!("Node {node_a_global_index} will compete over Node {node_b_global_index}");
@@ -304,9 +304,9 @@ fn get_bond_force_between_two_connections(
     let (neuron_b_index, node_b_local_index) = node_global_to_local_index(node_b_global_index, g_settings);
     let connection_b = get_inter_connection(neuron_b_index, node_b_local_index, inter_connections);
     if check_is_connected(node_a_global_index, connection_b) {
-        let bond_force = connection_a.get_connection_bond_force();
+        let bond_force = connection_a.get_bond_force();
         combined_bond_force = f32::max(combined_bond_force, bond_force);
-        let bond_force = connection_b.get_connection_bond_force();
+        let bond_force = connection_b.get_bond_force();
         combined_bond_force = f32::max(combined_bond_force, bond_force)
     }
     combined_bond_force

@@ -147,19 +147,14 @@ impl InterConnection {
         (strength, pushback)
     }
 
-    pub fn get_connection_bond_force(&self) -> f32 {
+    pub fn get_bond_force(&self) -> f32 {
         let (strength, pushback) = self.get_strength_and_pushback();
         strength - pushback
     }
 
-    pub fn get_pending_connection_bond_force(&self) -> f32 {
+    pub fn get_pending_bond_force(&self) -> f32 {
         let (strength, pushback) = self.get_pending_strength_and_pushback();
         strength - pushback
-    }
-
-    pub fn get_bond_force(&self) -> f32 {
-        let bond_force = unpack(self.strength.load(Ordering::Relaxed));
-        bond_force
     }
 
     pub fn store_index(&self, index: usize) {
@@ -228,19 +223,14 @@ impl IntraConnection {
         (strength, pushback)
     }
 
-    pub fn get_connection_bond_force(&self) -> f32 {
+    pub fn get_bond_force(&self) -> f32 {
         let (strength, pushback) = self.get_strength_and_pushback();
         strength - pushback
     }
 
-    pub fn get_pending_connection_bond_force(&self) -> f32 {
+    pub fn get_pending_bond_force(&self) -> f32 {
         let (strength, pushback) = self.get_pending_strength_and_pushback();
         strength - pushback
-    }
-
-    pub fn get_bond_force(&self) -> f32 {
-        let bond_force = unpack(self.strength);
-        bond_force
     }
 
     pub fn store_index(&mut self, index: usize) {
