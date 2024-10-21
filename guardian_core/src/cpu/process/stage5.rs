@@ -96,7 +96,14 @@ pub fn update_intra_connections(network: &mut Network) {
                     let connection_b = node_intra_connections.get(connection_index_b).unwrap();
 
                     // A bit messy logic
-                    if connection_a.pending_index == connection_b.pending_index {
+
+                    if connection_a.index == connection_b.index {
+                        if connection_a.get_bond_force() > connection_b.get_bond_force() {
+                            node_intra_connections.get_mut(connection_index_b).unwrap().move_pending_to_main();
+                        } else {
+                            node_intra_connections.get_mut(connection_index_a).unwrap().move_pending_to_main();
+                        }
+                    } else if connection_a.pending_index == connection_b.pending_index {
                         if connection_a.get_pending_bond_force() > connection_b.get_pending_bond_force() {
                             node_intra_connections.get_mut(connection_index_b).unwrap().reset_pending();
                             *will_move_connection.get_mut([node_a_local_index, connection_index_b]).unwrap() = false;
@@ -104,9 +111,7 @@ pub fn update_intra_connections(network: &mut Network) {
                             node_intra_connections.get_mut(connection_index_a).unwrap().reset_pending();
                             *will_move_connection.get_mut([node_a_local_index, connection_index_a]).unwrap() = false;
                         }
-
                     }
-
                 }
             }
 
