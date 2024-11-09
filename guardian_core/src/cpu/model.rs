@@ -2,6 +2,7 @@ use ndarray_rand::RandomExt;
 use ndarray_rand::rand_distr::Normal;
 use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 use anyhow::{ensure, Result};
+use rand::rngs::StdRng;
 
 use super::process::clip;
 
@@ -55,7 +56,7 @@ impl ModelSettings {
 }
 
 impl Model {
-    pub fn new(settings: ModelSettings) -> Result<Self> {
+    pub fn new(settings: ModelSettings, rng: &mut StdRng) -> Result<Self> {
         ensure!(!settings.input_sizes.is_empty());
         ensure!(!settings.hidden_sizes.is_empty());
         ensure!(!settings.output_sizes.is_empty());
@@ -64,16 +65,16 @@ impl Model {
         let next_size = settings.hidden_sizes.first().unwrap();
         let mut input_weights = vec![];
         for input_size in settings.input_sizes.iter() {
-            let weight = new_weight(*input_size, *next_size);
+            let weight = new_weight(*input_size, *next_size, rng);
             input_weights.push(weight);
         }
-        let input_bias = new_bias(*next_size);
+        let input_bias = new_bias(*next_size, rng);
 
         // Handle hidden layers
         let mut prev_size = next_size;
         let mut hidden_layers = vec![];
         for hidden_size in settings.hidden_sizes.iter().skip(1) {
-            let layer = Layer::new(*prev_size, *hidden_size);
+            let layer = Layer::new(*prev_size, *hidden_size, rng);
             hidden_layers.push(layer);
             prev_size = hidden_size;
         }
@@ -82,7 +83,7 @@ impl Model {
         let last_hidden_size = prev_size;
         let mut output_layers = vec![];
         for output_size in settings.output_sizes.iter() {
-            let layer = Layer::new(*last_hidden_size, *output_size);
+            let layer = Layer::new(*last_hidden_size, *output_size, rng);
             output_layers.push(layer);
         }
         Ok(Self { settings, input_weights, input_bias, hidden_layers, output_layers })
@@ -138,9 +139,9 @@ impl Model {
 
 
 impl Layer {
-    pub fn new(input_size: usize, output_size: usize) -> Self {
-        let weight = new_weight(input_size, output_size);
-        let bias = new_bias(output_size);
+    pub fn new(input_size: usize, output_size: usize, rng: &mut StdRng) -> Self {
+        let weight = new_weight(input_size, output_size, rng);
+        let bias = new_bias(output_size, rng);
         Self {
             weight,
             bias
@@ -178,24 +179,32 @@ fn activation_fn_output(arr: Array) -> Array {
     clip(arr, -0.1, 0.1)
 }
 
-fn new_weight(input_size: usize, output_size: usize) -> Weight {
-    Array2::random((input_size, output_size), Normal::new(0.0, 0.1).unwrap())
+
+
+fn new_weight(
+    input_size: usize,
+    output_size: usize,
+    rng: &mut StdRng
+) -> Weight {
+    let dist = Normal::new(0.0, 0.1).unwrap();
+    Array2::random_using((input_size, output_size), dist, rng)
 }
 
-fn new_bias(size: usize) -> Bias {
-    Array1::random(size, Normal::new(0.0, 0.1).unwrap())
+fn new_bias(size: usize, rng: &mut StdRng) -> Bias {
+    let dist = Normal::new(0.0, 0.1).unwrap();
+    Array1::random_using(size, dist, rng)
 }
 
 #[cfg(test)]
 pub mod tests {
-    use rand::distributions::Uniform;
+    use rand::{distributions::Uniform, SeedableRng};
     use super::*;
 
     #[test]
     pub fn test_model() {
-        let model = Model::new(
-            ModelSettings::new(vec![4, 2], vec![8, 10], vec![2, 4]).unwrap()
-        ).unwrap();
+        let settings = ModelSettings::new(vec![4, 2], vec![8, 10], vec![2, 4]).unwrap();
+        let mut rng = StdRng::from_entropy();
+        let model = Model::new(settings, &mut rng).unwrap();
         let batch_size = 4;
         let x1 = Array2::random((batch_size, 4), Uniform::new(0.0, 1.0));
         let x2 = Array2::random((batch_size, 2), Uniform::new(0.0, 1.0));

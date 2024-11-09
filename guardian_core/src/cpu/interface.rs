@@ -353,8 +353,14 @@ impl State {
 impl Genome {
     pub fn new(
         g_settings: &GuardianSettings,
-        n_settings: &NetworkSettings
+        n_settings: &NetworkSettings,
+        mut rng: Option<StdRng>
     ) -> Self {
+        if rng.is_none() {
+            rng = Some(rand::rngs::StdRng::from_entropy());
+        }
+        let mut rng = rng.unwrap();
+
         // Interconnected
         let settings = ModelSettings::new(
             vec![
@@ -366,7 +372,7 @@ impl Genome {
             g_settings.hidden_sizes.clone(),
             vec![g_settings.node_size],
         ).unwrap();  // We know that this is ok
-        let interconnected_node_state_update = Model::new(settings).unwrap();
+        let interconnected_node_state_update = Model::new(settings, &mut rng).unwrap();
 
         // Intraconnected
         let settings = ModelSettings::new(
@@ -381,7 +387,7 @@ impl Genome {
                 g_settings.node_size
             ],
         ).unwrap();  // We know that this is ok
-        let intraconnected_node_state_update = Model::new(settings).unwrap();
+        let intraconnected_node_state_update = Model::new(settings, &mut rng).unwrap();
 
         // Neuron state
         let settings = ModelSettings::new(
@@ -395,7 +401,7 @@ impl Genome {
                 g_settings.node_size
             ],
         ).unwrap();  // We know that this is ok
-        let neuron_state_update = Model::new(settings).unwrap();
+        let neuron_state_update = Model::new(settings, &mut rng).unwrap();
 
         // Interconnections
         let settings = ModelSettings::new(
@@ -413,7 +419,7 @@ impl Genome {
                 // Strength, Pushback, Gradient
             ],
         ).unwrap();  // We know that this is ok
-        let interconnections_update = Model::new(settings).unwrap();
+        let interconnections_update = Model::new(settings, &mut rng).unwrap();
 
         // Intraconnections
         let settings = ModelSettings::new(
@@ -430,7 +436,7 @@ impl Genome {
                 // Strength, Pushback, Gradient
             ],
         ).unwrap();  // We know that this is ok
-        let intraconnections_update = Model::new(settings).unwrap();
+        let intraconnections_update = Model::new(settings, &mut rng).unwrap();
 
         Self {
             interconnected_node_state_update,

@@ -165,10 +165,10 @@ pub mod test {
         let g_settings = GuardianSettings::testing_default();
         let n_settings = NetworkSettings::testing_default();
         get_network_size(&g_settings, &n_settings);
-        let genome = Genome::new(&g_settings, &n_settings);
+        let rng = rand::rngs::StdRng::seed_from_u64(1);
+        let genome = Genome::new(&g_settings, &n_settings, Some(rng.clone()));
         let mut state = State::new(&g_settings, &n_settings);
         debug!("Randomizing");
-        let rng = rand::rngs::StdRng::seed_from_u64(1);
         state.randomize(&g_settings, &n_settings, Some(rng));
         debug!("Randomizing done");
         //debug!("\n{:#?}", state.nodes);
