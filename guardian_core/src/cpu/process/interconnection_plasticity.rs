@@ -54,7 +54,7 @@ fn update_connections(network: &mut Network, pool: &ThreadPool) {
     .for_each(|(neuron_a_index, (neuron_state, node_states, inter_connections, inter_connections_flags))| {
         let neuron_state = unpack_array(neuron_state);
         let precalculated_neuron_state_a = model.precalculate(NEURON_STATE_A, neuron_state.view());
-        let node_index_offset = neuron_a_index * g_settings.n_nodes;
+        let node_index_offset = neuron_a_index * g_settings.n_nodes_per_neuron;
         for (node_a_local_index, node_a) in node_states.rows().into_iter().enumerate() {
             let node_a_global_index = node_a_local_index + node_index_offset;
             let connection_a = inter_connections.get(node_a_local_index).unwrap();
@@ -93,7 +93,7 @@ fn flag_if_should_attempt_connection(network: &mut Network, pool: &ThreadPool) {
     .enumerate()
     .par_bridge()
     .for_each(|(neuron_a_index, (inter_connections, inter_connections_flags))| {
-        let node_index_offset = neuron_a_index * g_settings.n_nodes;
+        let node_index_offset = neuron_a_index * g_settings.n_nodes_per_neuron;
         for (node_a_local_index, connection_a) in inter_connections.into_iter().enumerate() {
             let node_a_global_index = node_a_local_index + node_index_offset;
 
@@ -149,7 +149,7 @@ pub fn attempt_connection(network: &mut Network, pool: &ThreadPool) {
     .enumerate()
     .par_bridge()
     .for_each(|(neuron_a_index, (inter_connections, inter_connections_flags))| {
-        let node_index_offset = neuron_a_index * g_settings.n_nodes;
+        let node_index_offset = neuron_a_index * g_settings.n_nodes_per_neuron;
         for (node_a_local_index, connection_a) in inter_connections.into_iter().enumerate() {
             let _node_a_global_index = node_a_local_index + node_index_offset;
 
@@ -202,7 +202,7 @@ pub fn compete_over_node(network: &mut Network, pool: &ThreadPool) {
     .enumerate()
     .par_bridge()
     .for_each(|(neuron_a_index, (inter_connections, inter_connections_flags))| {
-        let node_index_offset = neuron_a_index * g_settings.n_nodes;
+        let node_index_offset = neuron_a_index * g_settings.n_nodes_per_neuron;
         for (node_a_local_index, connection_a) in inter_connections.into_iter().enumerate() {
             let node_a_global_index = node_a_local_index + node_index_offset;
 
@@ -257,7 +257,7 @@ pub fn check_attempt(network: &mut Network, pool: &ThreadPool) {
     .enumerate()
     .par_bridge()
     .for_each(|(neuron_a_index, (inter_connections, inter_connections_flags))| {
-        let node_index_offset = neuron_a_index * g_settings.n_nodes;
+        let node_index_offset = neuron_a_index * g_settings.n_nodes_per_neuron;
         for (node_a_local_index, connection_a) in inter_connections.into_iter().enumerate() {
             let node_a_global_index = node_a_local_index + node_index_offset;
 
@@ -425,7 +425,7 @@ fn search_area(
         ];
         let node_range = -(g_settings.n_interconnected_nodes_search as isize)..=(g_settings.n_interconnected_nodes_search as isize);
         for node_offset in node_range {
-            let node_b_local_index = wrap_index(start_node_index, node_offset, g_settings.n_nodes);
+            let node_b_local_index = wrap_index(start_node_index, node_offset, g_settings.n_nodes_per_neuron);
             let node_b = get_node(neuron_b_index, node_b_local_index, nodes);
             let is_pending = neuron_b_index == pending_neuron_index && pending_node_index == node_b_local_index;
             let (strength, pushback) = if is_pending {

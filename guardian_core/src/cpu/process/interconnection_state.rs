@@ -40,7 +40,7 @@ pub fn update(network: &mut Network, pool: &ThreadPool) {
     .enumerate()
     .par_bridge()
     .for_each(|(neuron_a_index, (neuron_state, node_states, inter_connections))| {
-        let node_index_offset = neuron_a_index * g_settings.n_nodes;
+        let node_index_offset = neuron_a_index * g_settings.n_nodes_per_neuron;
         let neuron_state = unpack_array(neuron_state);
         let precalculated_forward = model.precalculate(NEURON_STATE_A, neuron_state.view());
         let precalculated_forward = [&precalculated_forward];

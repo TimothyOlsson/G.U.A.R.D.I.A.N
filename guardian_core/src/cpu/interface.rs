@@ -275,7 +275,7 @@ impl State {
         // NOTE: Zeros does not allocate anything!
         let nodes = Array3::ones((
             n_settings.n_neurons,
-            g_settings.n_nodes,
+            g_settings.n_nodes_per_neuron,
             g_settings.node_size
         ));
         let neuron_states = Array2::ones((
@@ -285,7 +285,7 @@ impl State {
         let inter_connections = Array2::from_elem(
             (
                 n_settings.n_neurons,
-                g_settings.n_nodes,
+                g_settings.n_nodes_per_neuron,
             ),
             InterConnection::default()
         );
@@ -293,14 +293,14 @@ impl State {
         let inter_connections_flags = Array2::from_shape_fn(
             (
                 n_settings.n_neurons,
-                g_settings.n_nodes,
+                g_settings.n_nodes_per_neuron,
             ),
             |_| { Flags::new() }
         );
         let intra_connections = Array3::from_elem(
             (
                 n_settings.n_neurons,
-                g_settings.n_nodes,
+                g_settings.n_nodes_per_neuron,
                 g_settings.n_intraconnections_per_node,
             ),
             IntraConnection::default()
@@ -331,9 +331,9 @@ impl State {
         self.neuron_states.map_mut(|v| *v = between_state.sample(&mut rng));
 
         // Mutate connections
-        let n_nodes_total = n_settings.n_neurons * g_settings.n_nodes;
+        let n_nodes_total = n_settings.n_neurons * g_settings.n_nodes_per_neuron;
         let between_inter_index = Uniform::<usize>::from(0..n_nodes_total);
-        let between_intra_index = Uniform::<usize>::from(0..g_settings.n_nodes);
+        let between_intra_index = Uniform::<usize>::from(0..g_settings.n_nodes_per_neuron);
         let between_state = Uniform::<f32>::from(0.0..1.0);
         self.inter_connections.map_mut(|c| {
             c.store_index(between_inter_index.sample(&mut rng));

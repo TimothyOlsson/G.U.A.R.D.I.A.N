@@ -44,7 +44,7 @@ pub fn update(network: &mut Network, pool: &ThreadPool) {
 
         let precalculated_neuron_state = model.precalculate(NEURON_STATE, neuron_state.view());
         let mut will_move_connection = Array2::from_elem(
-            (g_settings.n_nodes, g_settings.n_intraconnections_per_node),
+            (g_settings.n_nodes_per_neuron, g_settings.n_intraconnections_per_node),
             false
         );
         for (node_a_local_index, node_a) in node_states.rows().into_iter().enumerate() {
@@ -117,7 +117,7 @@ pub fn update(network: &mut Network, pool: &ThreadPool) {
         }
 
         // Need to do this last, since otherwise the index will move during the search
-        for node_a_local_index in 0..g_settings.n_nodes {
+        for node_a_local_index in 0..g_settings.n_nodes_per_neuron {
             for (connection_index, connection) in intra_connections.row_mut(node_a_local_index).iter_mut().enumerate() {
                 let will_move = *will_move_connection.get((node_a_local_index, connection_index)).unwrap();
                 if will_move {
@@ -173,7 +173,7 @@ fn update_pending_connection(
     // Start with searching neuron and vicinity where pending is index
     let node_range = -(g_settings.n_intraconnected_nodes_search as isize)..=(g_settings.n_intraconnected_nodes_search as isize);
     for node_offset in node_range {
-        let node_b_index = wrap_index(pending_node_index, node_offset, g_settings.n_nodes);
+        let node_b_index = wrap_index(pending_node_index, node_offset, g_settings.n_nodes_per_neuron);
 
         if already_connected.contains(&node_b_index) { continue }
 

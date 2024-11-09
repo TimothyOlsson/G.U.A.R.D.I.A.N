@@ -29,7 +29,7 @@ pub fn visualize_network(state_history: Vec<State>, g_settings: &GuardianSetting
     let mut data = String::new();
     // Params
     add_param(&mut data, "n_neurons", n_settings.n_neurons);
-    add_param(&mut data, "n_nodes_per_neuron", g_settings.n_nodes);
+    add_param(&mut data, "n_nodes_per_neuron_per_neuron", g_settings.n_nodes_per_neuron);
     add_param(&mut data, "node_size", g_settings.node_size);
     add_param(&mut data, "neuron_state_size", g_settings.neuron_state_size);
 

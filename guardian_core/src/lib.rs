@@ -124,7 +124,7 @@ pub struct GuardianSettings {
     // Model
     pub node_size: usize,
     pub neuron_state_size: usize,
-    pub n_nodes: usize,
+    pub n_nodes_per_neuron: usize,
     pub n_intraconnections_per_node: usize,
 
     // Searching
@@ -183,7 +183,7 @@ impl Default for GuardianSettings {
         Self {
             node_size: 128,
             neuron_state_size: 2048,
-            n_nodes: 256,
+            n_nodes_per_neuron: 256,
             n_intraconnections_per_node: 4,
             neurons_per_network_connection: 64,
             n_interconnected_nodes_search: 4,
@@ -198,14 +198,14 @@ impl GuardianSettings {
     pub fn downlevel_default() -> Self {
         Self {
             node_size: 4,
-            neuron_state_size: 16,
-            n_nodes: 4,
+            neuron_state_size: 8,
+            n_nodes_per_neuron: 8,
             n_intraconnections_per_node: 2,
             neurons_per_network_connection: 0,
             n_interconnected_nodes_search: 1,
             n_interconnected_neuron_search: 1,
             n_intraconnected_nodes_search: 1,
-            hidden_sizes: vec![16]
+            hidden_sizes: vec![16, 16]
         }
     }
 
@@ -213,7 +213,7 @@ impl GuardianSettings {
         Self {
             node_size: 8,
             neuron_state_size: 32,
-            n_nodes: 32,
+            n_nodes_per_neuron: 32,
             n_intraconnections_per_node: 8,
             neurons_per_network_connection: 64,
             n_interconnected_nodes_search: 4,
@@ -226,14 +226,14 @@ impl GuardianSettings {
 
 impl GuardianSettings {
     pub fn bytes_per_neuron(&self) -> usize {
-        let nodes = self.node_size * self.n_nodes;
+        let nodes = self.node_size * self.n_nodes_per_neuron;
         let neuron_state = self.neuron_state_size;
         println!("Size for node states: {:?} per neuron", humansize::format_size(nodes, humansize::DECIMAL));
         println!("Size for neuron state: {:?} per neuron", humansize::format_size(neuron_state, humansize::DECIMAL));
 
         // Connections
-        let inter_connections = std::mem::size_of::<InterConnection>() * self.n_nodes + 1;  // +1 byte for flags
-        let intra_connections = std::mem::size_of::<IntraConnection>() * (self.n_nodes * self.n_intraconnections_per_node);
+        let inter_connections = std::mem::size_of::<InterConnection>() * self.n_nodes_per_neuron + 1;  // +1 byte for flags
+        let intra_connections = std::mem::size_of::<IntraConnection>() * (self.n_nodes_per_neuron * self.n_intraconnections_per_node);
         println!("Size for inter_connections: {:?} per neuron", humansize::format_size(inter_connections, humansize::DECIMAL));
         println!("Size for intra_connections: {:?} per neuron", humansize::format_size(intra_connections, humansize::DECIMAL));
 
@@ -256,11 +256,11 @@ pub fn get_genome_size() {
 
 /// Could use a struct, but that becomes a hassle when unpacking
 pub fn node_global_to_local_index(node_global_index: usize, g_settings: &GuardianSettings) -> (usize, usize) {
-    let neuron_index = node_global_index / g_settings.n_nodes;  // Faster if n_interconnected_nodes is the power of 2, then could do bit-shifting instead
-    let node_local_index = node_global_index - (neuron_index * g_settings.n_nodes);
+    let neuron_index = node_global_index / g_settings.n_nodes_per_neuron;  // Faster if n_interconnected_nodes is the power of 2, then could do bit-shifting instead
+    let node_local_index = node_global_index - (neuron_index * g_settings.n_nodes_per_neuron);
     (neuron_index, node_local_index)
 }
 
 pub fn node_local_to_global_index(neuron_index: usize, node_local_index: usize, g_settings: &GuardianSettings) -> usize {
-    neuron_index * g_settings.n_nodes + node_local_index
+    neuron_index * g_settings.n_nodes_per_neuron + node_local_index
 }
