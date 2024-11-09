@@ -1,12 +1,12 @@
 use tokio::main;
-use tracing::{trace, debug, info, Level};
+use tracing::{debug, info, Level};
 use tracing_subscriber::FmtSubscriber;
 use rayon::ThreadPoolBuilder;
+use rand::SeedableRng;
 
-use glib::gpu::interface::test_webgpu;
 use glib::cpu::interface::{Genome, State, Network};
 use glib::cpu::process::update;
-use glib::{cpu, get_network_size, GuardianSettings, NetworkSettings};
+use glib::{get_network_size, GuardianSettings, NetworkSettings};
 use glib::visualization;
 
 #[main]
@@ -26,7 +26,8 @@ async fn main() {
     let genome = Genome::new(&g_settings, &n_settings);
     let mut state = State::new(&g_settings, &n_settings);
     debug!("Randomizing");
-    state.randomize(&g_settings, &n_settings);
+    let rng = rand::rngs::StdRng::seed_from_u64(1);
+    state.randomize(&g_settings, &n_settings, Some(rng));
     debug!("Randomizing done");
     //debug!("\n{:#?}", state.nodes);
     //debug!("\n{:#?}", state.neuron_states);
@@ -41,7 +42,7 @@ async fn main() {
     };
 
     let mut state_history = vec![network.state.clone()];
-    for i in 0..32 {
+    for i in 0..64 {
         info!("Iteration {i}");
         update(&mut network, &pool);
         debug!("Nodes \n{:#?}", network.state.nodes);

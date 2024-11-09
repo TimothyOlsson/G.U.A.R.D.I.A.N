@@ -1,7 +1,9 @@
-use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU8, Ordering};
 
 use ndarray::prelude::*;
 use rand::distributions::{Distribution, Uniform};
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 
 use crate::{NetworkSettings, GuardianSettings};
 
@@ -312,8 +314,16 @@ impl State {
         }
     }
 
-    pub fn randomize(&mut self, g_settings: &GuardianSettings, n_settings: &NetworkSettings) {
-        let mut rng = rand::thread_rng();
+    pub fn randomize(
+        &mut self,
+        g_settings: &GuardianSettings,
+        n_settings: &NetworkSettings,
+        mut rng: Option<StdRng>
+    ) {
+        if rng.is_none() {
+            rng = Some(rand::rngs::StdRng::from_entropy());
+        }
+        let mut rng = rng.unwrap();
 
         // Mutate states
         let between_state = Uniform::<u8>::from(0..=255); // 256 is exclusive, so this is 0 to 255
