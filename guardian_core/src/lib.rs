@@ -197,7 +197,7 @@ impl GuardianSettings {
             n_interconnected_nodes_search: 4,
             n_interconnected_neuron_search: 1,
             n_intraconnected_nodes_search: 1,
-            hidden_sizes: vec![32, 32]
+            hidden_sizes: vec![64, 64]
         }
     }
 }

@@ -23,7 +23,7 @@ async fn main() {
     let g_settings = GuardianSettings::downlevel_default();
     let n_settings = NetworkSettings::downlevel_default();
     get_network_size(&g_settings, &n_settings);
-    let rng = rand::rngs::StdRng::seed_from_u64(1);
+    let rng = rand::rngs::StdRng::seed_from_u64(6);
     let genome = Genome::new(&g_settings, &n_settings, Some(rng.clone()));
     let mut state = State::new(&g_settings, &n_settings);
     debug!("Randomizing");
@@ -42,7 +42,7 @@ async fn main() {
     };
 
     let mut state_history = vec![network.state.clone()];
-    for i in 0..64 {
+    for i in 0..256 {
         info!("Iteration {i}");
         update(&mut network, &pool);
         debug!("Nodes \n{:#?}", network.state.nodes);
