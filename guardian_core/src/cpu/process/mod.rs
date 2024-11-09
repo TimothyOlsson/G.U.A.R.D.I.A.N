@@ -162,8 +162,8 @@ pub mod test {
         add_tracing();
         let thread_count = std::thread::available_parallelism().unwrap().get();
         let pool = ThreadPoolBuilder::new().num_threads(thread_count).build().unwrap();
-        let g_settings = GuardianSettings::testing_default();
-        let n_settings = NetworkSettings::testing_default();
+        let g_settings = GuardianSettings::downlevel_default();
+        let n_settings = NetworkSettings::downlevel_default();
         get_network_size(&g_settings, &n_settings);
         let rng = rand::rngs::StdRng::seed_from_u64(1);
         let genome = Genome::new(&g_settings, &n_settings, Some(rng.clone()));

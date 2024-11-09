@@ -3,7 +3,7 @@
 //! The general idea:
 //!
 //! The network is split into many small nodes (neurons). All neurons have a state of its components, which updated with the genome.
-//! All neurons in the network share the same genome, dictates how the state of each neuron should update.
+//! All neurons in the network share the same genome, which dictates how the state of each neuron should update.
 //!
 //! What the genome is any type of model (Neural Network or similar).
 //!
@@ -15,7 +15,7 @@
 //!     Nodes are intraconnected inside a neuron with multiple connections (dendrites) as well as to other neurons (terminals)
 //!     Another way to do this would be to split the nodes up to dendrite nodes (only interconnected) and terminal nodes (interconnected)
 //!     There are some benifits with this, but makes the program and the model much more complex
-//! * NeuronState (C):
+//! * NeuronState (S):
 //!     Models the sum of the activity of the nodes. It also functions as the state of the DNA
 //! * InterConnections:
 //!     Models connection between neurons (terminals)
@@ -40,7 +40,7 @@
 //! Order of calculations:
 //!
 //! NOTES:
-//! For interconnections, calculating with C(A) & C(B) might be expensive. Perhaps only used D for internal usage?
+//! For interconnections, calculating with S(A) & S(B) might be expensive. Perhaps only used D for internal usage?
 //! N = Node
 //! S = Strength
 //! P = Pushback
@@ -48,21 +48,21 @@
 //! Seperate connections and inference! What if we only want to train reconnections? Not possible if they are merged!!
 //!
 //! 1: Update interconnected terminals.
-//! * Model: C(A) & C(B) & N(A) & N(B) -> ΔN(A) (do twice, A and B switches places)
+//! * Model: S(A) & S(B) & N(A) & N(B) -> ΔN(A) (do twice, A and B switches places)
 //! * Description: Connection between neurons. To prevent memory errors, the "highest" index of the terminals will do the calculation.
 //!  When iterating over A, D(A) can be reused
 //!
 //! 2: Update intraconnections nodes
-//! * Model: C & N(A) & N(B) -> ΔN(A)
+//! * Model: S & N(A) & N(B) -> ΔN(A)
 //! * Description: Do for every connection and sum up the delta. NOTE: a working memory fitting the whole neuron needs to be used! Otherwise the
 //! state will change when calculating. D input can be reused for all. N(A) can be reused for connections.
 //!
 //! 3: Update neuron states
-//! * Model: C & N -> ΔD & ΔN
+//! * Model: S & N -> ΔD & ΔN
 //! * Description: Do for every T and D. Needs to save a D, so it wont change during calculation. D input can be reused for all
 //!
 //! 4: Update interconnections:
-//! * Model: C(A) & C(B) & N(A) & N(B) & S(A) & P(A) -> ΔS(A), ΔP(A), G(A)  (do twice, A and B switches places)
+//! * Model: S(A) & S(B) & N(A) & N(B) & S(A) & P(A) -> ΔS(A), ΔP(A), G(A)  (do twice, A and B switches places)
 //! * Description: Do for all connections in its close vicinity. If not connected, S and P are 0.
 //! S(A) is T(A) strength to T(B). P(A) is T(B) "refusal" of connection to T(A). Though it is stored in T(A)'s connection
 //! The search algorithm should look for other terminals to connect to
@@ -73,17 +73,17 @@
 //! Dispatch 4: The node with the highest index will win, since if there are multiple with same strength, only one can take the connection
 //!
 //! 5: Update intraconnections:
-//! * Model: C & N(A) & N(B) & S(A) & P(A) -> ΔS(A), ΔP(A), G(A)
+//! * Model: S & N(A) & N(B) & S(A) & P(A) -> ΔS(A), ΔP(A), G(A)
 //! * Description: Do for all connections. As above, but might be able to do it all in one dispatch, because each internal workings should be done on one core / SM or similar.
 //! The internal connections are different, since there can be multiple connections for each node.
 //! Pushback is the other node rejecting the connecting node
 //!
 //! 6: Update network ports
-//! * Model: C & P -> ΔP
+//! * Model: S & P -> ΔP
 //! * Description: TODO
 //!
 //! 7: Read from network ports
-//! * Model: C & P -> ΔC
+//! * Model: S & P -> ΔC
 //! * Description: Will be 1 back in time!
 //!
 //! 8: Read input ports
@@ -133,7 +133,6 @@ pub struct GuardianSettings {
     pub n_intraconnected_nodes_search: usize,
 
     // Network
-    pub neurons_per_network_connection: usize,
     // TODO: Add sizes?
 
     // IO
@@ -147,7 +146,8 @@ pub struct GuardianSettings {
 pub struct NetworkSettings {
     pub n_neurons: usize,
     pub n_io_ports: usize,
-    pub n_network_ports: usize
+    pub n_network_ports: usize,
+    pub neurons_per_network_connection: usize,
 }
 
 impl Default for NetworkSettings {
@@ -155,7 +155,8 @@ impl Default for NetworkSettings {
         Self {
             n_neurons: 10_000,
             n_io_ports: 0,
-            n_network_ports: 0
+            n_network_ports: 0,
+            neurons_per_network_connection: 16
         }
     }
 }
@@ -165,15 +166,8 @@ impl NetworkSettings {
         Self {
             n_neurons: 2,
             n_io_ports: 0,
-            n_network_ports: 0
-        }
-    }
-
-    pub fn testing_default() -> Self {
-        Self {
-            n_neurons: 16,
-            n_io_ports: 0,
-            n_network_ports: 0
+            n_network_ports: 0,
+            neurons_per_network_connection: 4
         }
     }
 }
@@ -185,7 +179,6 @@ impl Default for GuardianSettings {
             neuron_state_size: 2048,
             n_nodes_per_neuron: 256,
             n_intraconnections_per_node: 4,
-            neurons_per_network_connection: 64,
             n_interconnected_nodes_search: 4,
             n_interconnected_neuron_search: 1,
             n_intraconnected_nodes_search: 1,
@@ -198,28 +191,13 @@ impl GuardianSettings {
     pub fn downlevel_default() -> Self {
         Self {
             node_size: 4,
-            neuron_state_size: 8,
+            neuron_state_size: 16,
             n_nodes_per_neuron: 8,
-            n_intraconnections_per_node: 2,
-            neurons_per_network_connection: 0,
-            n_interconnected_nodes_search: 1,
-            n_interconnected_neuron_search: 1,
-            n_intraconnected_nodes_search: 1,
-            hidden_sizes: vec![16, 16]
-        }
-    }
-
-    pub fn testing_default() -> Self {
-        Self {
-            node_size: 8,
-            neuron_state_size: 32,
-            n_nodes_per_neuron: 32,
-            n_intraconnections_per_node: 8,
-            neurons_per_network_connection: 64,
+            n_intraconnections_per_node: 4,
             n_interconnected_nodes_search: 4,
             n_interconnected_neuron_search: 1,
             n_intraconnected_nodes_search: 1,
-            hidden_sizes: vec![64, 64]
+            hidden_sizes: vec![32, 32]
         }
     }
 }
