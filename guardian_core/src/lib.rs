@@ -164,10 +164,10 @@ impl Default for NetworkSettings {
 impl NetworkSettings {
     pub fn downlevel_default() -> Self {
         Self {
-            n_neurons: 2,
+            n_neurons: 8,
             n_io_ports: 0,
             n_network_ports: 0,
-            neurons_per_network_connection: 4
+            neurons_per_network_connection: 0
         }
     }
 }
