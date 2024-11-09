@@ -12,7 +12,6 @@ use anyhow::{anyhow, Result};
 use tracing::info;
 use wgpu::util::DeviceExt;
 
-use super::wgsl_parsing;
 use crate::GuardianSettings;
 
 pub type Shape = [u32; 3];
@@ -338,7 +337,7 @@ impl GpuBuffer {
 
 
 pub async fn test_webgpu() -> Result<()> {
-    let guardian_settings = GuardianSettings::default();
+    let _guardian_settings = GuardianSettings::default();
 
     info!("Initiated test webgpu");
     let gpu_connection = GpuConnection::new().await?;

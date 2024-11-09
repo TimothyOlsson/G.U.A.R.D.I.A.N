@@ -18,6 +18,7 @@ pub struct Layer {
 }
 
 #[derive(Clone)]
+#[allow(unused)]
 pub struct Model {
     settings: ModelSettings,
     input_weights: Vec<Weight>,
@@ -27,6 +28,7 @@ pub struct Model {
 }
 
 #[derive(Clone)]
+#[allow(unused)]
 pub struct ModelSettings {
     // Easier for GPU calculations
     n_inputs: usize,

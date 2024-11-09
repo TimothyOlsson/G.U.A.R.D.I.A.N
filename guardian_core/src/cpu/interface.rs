@@ -353,7 +353,7 @@ impl State {
 impl Genome {
     pub fn new(
         g_settings: &GuardianSettings,
-        n_settings: &NetworkSettings,
+        _n_settings: &NetworkSettings,  // TODO: Add models for IO
         mut rng: Option<StdRng>
     ) -> Self {
         if rng.is_none() {

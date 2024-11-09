@@ -4,8 +4,7 @@ use std::sync::atomic::Ordering;
 use regex::Regex;
 use ndarray::{Array, Dimension};
 
-use crate::cpu::process::check_is_connected;
-use crate::{node_global_to_local_index, node_local_to_global_index, GuardianSettings, NetworkSettings};
+use crate::{node_global_to_local_index, GuardianSettings, NetworkSettings};
 use crate::cpu::interface::State;
 
 pub fn add_param<T: Debug>(js_string: &mut String, variable: &str, data: T) {
