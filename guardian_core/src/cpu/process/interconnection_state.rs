@@ -1,8 +1,8 @@
 use std::time::Instant;
 
-use tracing::{trace, info};
+use tracing::trace;
 use ndarray::{Array1, Axis};
-use itertools::{any, multizip};
+use itertools::multizip;
 use ndarray::parallel::prelude::*;
 use rayon::iter::ParallelBridge;
 
@@ -16,7 +16,7 @@ const NODE_A: usize = 2;
 const NODE_B: usize = 3;
 const DELTA_NODE: usize = 0;
 
-pub fn update_interconnected_nodes(network: &mut Network) {
+pub fn update(network: &mut Network, pool: &ThreadPool) {
     let nodes = &network.state.nodes;
     let neuron_states = &network.state.neuron_states;
     let inter_connections_source = &network.state.inter_connections;
@@ -35,11 +35,10 @@ pub fn update_interconnected_nodes(network: &mut Network) {
 
 
     let now = Instant::now();
-    zipped
+    let operation = zipped
     .into_iter()
     .enumerate()
     .par_bridge()
-    .into_par_iter()
     .for_each(|(neuron_a_index, (neuron_state, node_states, inter_connections))| {
         let node_index_offset = neuron_a_index * g_settings.n_nodes;
         let neuron_state = unpack_array(neuron_state);
@@ -114,5 +113,8 @@ pub fn update_interconnected_nodes(network: &mut Network) {
             }
         }
     });
+
+    pool.install(|| operation);
+
     trace!("It took {:?} to update interconnection states", now.elapsed());
 }

@@ -16,7 +16,7 @@ const NODE_B: usize = 2;
 const STRENGTH: usize = 3;
 const PUSHBACK: usize = 4;
 
-pub fn update_intra_connections(network: &mut Network) {
+pub fn update(network: &mut Network, pool: &ThreadPool) {
     let nodes = &network.state.nodes;
     let neuron_states = &network.state.neuron_states;
     let intra_connections = &mut network.state.intra_connections;
@@ -33,11 +33,10 @@ pub fn update_intra_connections(network: &mut Network) {
     );
 
     let now = Instant::now();
-    zipped
+    let operation = zipped
     .into_iter()
     .enumerate()
     .par_bridge()
-    .into_par_iter()
     .for_each(|(_neuron_index, (neuron_state, node_states, mut intra_connections))| {
         let neuron_state = unpack_array(neuron_state);
         let node_states = unpack_array(node_states.view());
@@ -88,7 +87,7 @@ pub fn update_intra_connections(network: &mut Network) {
             }
 
             // TODO: Make this cleaner
-            // TODO: Should this be done?
+            // TODO: Should this code be used or not? Prevents multiple connections. Maybe in another way
             for connection_index_a in 0..g_settings.n_intraconnections_per_node {
                 for connection_index_b in 0..g_settings.n_intraconnections_per_node {
                     if connection_index_a == connection_index_b { continue }
@@ -128,6 +127,7 @@ pub fn update_intra_connections(network: &mut Network) {
             }
         }
     });
+    pool.install(|| operation);
     trace!("It took {:?} to update intraconnections", now.elapsed());
 }
 

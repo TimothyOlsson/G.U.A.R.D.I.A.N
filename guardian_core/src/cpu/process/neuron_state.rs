@@ -14,7 +14,7 @@ const NODE: usize = 1;
 const DELTA_NEURON_STATE: usize = 0;
 const DELTA_NODE: usize = 1;
 
-pub fn update_neuron_states(network: &mut Network) {
+pub fn update(network: &mut Network, pool: &ThreadPool) {
     let nodes = &mut network.state.nodes;
     let neuron_states = &mut network.state.neuron_states;
     let genome = &network.genome;
@@ -29,10 +29,9 @@ pub fn update_neuron_states(network: &mut Network) {
     );
 
     let now = Instant::now();
-    zipped
+    let operation = zipped
     .into_iter()
     .par_bridge()
-    .into_par_iter()
     .for_each(|(mut neuron_state_source, mut node_states_source)| {
         let neuron_state = unpack_array(neuron_state_source.view());
         let precalculated = [&model.precalculate(NEURON_STATE, neuron_state.view())];
@@ -58,6 +57,7 @@ pub fn update_neuron_states(network: &mut Network) {
         let updated_neuron_state = pack_array(updated_neuron_state);
         neuron_state_source.assign(&updated_neuron_state);
     });
+    pool.install(|| operation);
     trace!("It took {:?} to update neuron states", now.elapsed());
 }
 

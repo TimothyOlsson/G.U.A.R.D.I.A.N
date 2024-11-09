@@ -18,15 +18,15 @@ const NODE_B: usize = 3;
 const STRENGTH: usize = 4;
 const PUSHBACK: usize = 5;
 
-pub fn update_inter_connections(network: &mut Network) {
-    update_connections(network);
-    flag_if_should_attempt_connection(network);
-    attempt_connection(network);
-    compete_over_node(network);
-    check_attempt(network);
+pub fn update(network: &mut Network, pool: &ThreadPool) {
+    update_connections(network, pool);
+    flag_if_should_attempt_connection(network, pool);
+    attempt_connection(network, pool);
+    compete_over_node(network, pool);
+    check_attempt(network, pool);
 }
 
-fn update_connections(network: &mut Network) {
+fn update_connections(network: &mut Network, pool: &ThreadPool) {
     let nodes = &network.state.nodes;
     let neuron_states = &network.state.neuron_states;
     let inter_connections_source = &network.state.inter_connections;
@@ -47,12 +47,11 @@ fn update_connections(network: &mut Network) {
     );
 
     let now = Instant::now();
-    zipped
+    let operation = zipped
     .into_iter()
     .enumerate()
     .par_bridge()
-    .into_par_iter()
-    .for_each(|(neuron_a_index, (neuron_state, node_states, inter_connections, mut inter_connections_flags))| {
+    .for_each(|(neuron_a_index, (neuron_state, node_states, inter_connections, inter_connections_flags))| {
         let neuron_state = unpack_array(neuron_state);
         let precalculated_neuron_state_a = model.precalculate(NEURON_STATE_A, neuron_state.view());
         let node_index_offset = neuron_a_index * g_settings.n_nodes;
@@ -72,11 +71,12 @@ fn update_connections(network: &mut Network) {
             }
         }
     });
+    pool.install(|| operation);
     trace!("It took {:?} to update interconnections", now.elapsed());
 }
 
 
-fn flag_if_should_attempt_connection(network: &mut Network) {
+fn flag_if_should_attempt_connection(network: &mut Network, pool: &ThreadPool) {
     let inter_connections_source = &network.state.inter_connections;
     let inter_connections_flags_source = &network.state.inter_connections_flags;
     let zipped = multizip(
@@ -88,12 +88,11 @@ fn flag_if_should_attempt_connection(network: &mut Network) {
 
     let g_settings = &network.g_settings;
     let now = Instant::now();
-    zipped
+    let operation = zipped
     .into_iter()
     .enumerate()
     .par_bridge()
-    .into_par_iter()
-    .for_each(|(neuron_a_index, (inter_connections, mut inter_connections_flags))| {
+    .for_each(|(neuron_a_index, (inter_connections, inter_connections_flags))| {
         let node_index_offset = neuron_a_index * g_settings.n_nodes;
         for (node_a_local_index, connection_a) in inter_connections.into_iter().enumerate() {
             let node_a_global_index = node_a_local_index + node_index_offset;
@@ -127,11 +126,12 @@ fn flag_if_should_attempt_connection(network: &mut Network) {
             }
         }
     });
+    pool.install(|| operation);
     trace!("It took {:?} to flag attempting interconnections", now.elapsed());
 
 }
 
-pub fn attempt_connection(network: &mut Network) {
+pub fn attempt_connection(network: &mut Network, pool: &ThreadPool) {
     let inter_connections_source = &network.state.inter_connections;
     let inter_connections_flags_source = &network.state.inter_connections_flags;
     let g_settings = &network.g_settings;
@@ -144,15 +144,14 @@ pub fn attempt_connection(network: &mut Network) {
     );
 
     let now = Instant::now();
-    zipped
+    let operation = zipped
     .into_iter()
     .enumerate()
     .par_bridge()
-    .into_par_iter()
     .for_each(|(neuron_a_index, (inter_connections, inter_connections_flags))| {
         let node_index_offset = neuron_a_index * g_settings.n_nodes;
         for (node_a_local_index, connection_a) in inter_connections.into_iter().enumerate() {
-            let node_a_global_index = node_a_local_index + node_index_offset;
+            let _node_a_global_index = node_a_local_index + node_index_offset;
 
             // Check if should connect
             let flags_a = inter_connections_flags.get(node_a_local_index).unwrap();
@@ -180,11 +179,12 @@ pub fn attempt_connection(network: &mut Network) {
             connection_b.store_index(0);
         }
     });
+    pool.install(|| operation);
     trace!("It took {:?} to attempt interconnections", now.elapsed());
 }
 
 
-pub fn compete_over_node(network: &mut Network) {
+pub fn compete_over_node(network: &mut Network, pool: &ThreadPool) {
     let inter_connections_source = &network.state.inter_connections;
     let inter_connections_flags_source = &network.state.inter_connections_flags;
     let g_settings = &network.g_settings;
@@ -197,12 +197,11 @@ pub fn compete_over_node(network: &mut Network) {
     );
 
     let now = Instant::now();
-    zipped
+    let operation = zipped
     .into_iter()
     .enumerate()
     .par_bridge()
-    .into_par_iter()
-    .for_each(|(neuron_a_index, (inter_connections, mut inter_connections_flags))| {
+    .for_each(|(neuron_a_index, (inter_connections, inter_connections_flags))| {
         let node_index_offset = neuron_a_index * g_settings.n_nodes;
         for (node_a_local_index, connection_a) in inter_connections.into_iter().enumerate() {
             let node_a_global_index = node_a_local_index + node_index_offset;
@@ -235,11 +234,12 @@ pub fn compete_over_node(network: &mut Network) {
             }
         }
     });
+    pool.install(|| operation);
     trace!("It took {:?} to compete over interconnections", now.elapsed());
 }
 
 
-pub fn check_attempt(network: &mut Network) {
+pub fn check_attempt(network: &mut Network, pool: &ThreadPool) {
     let inter_connections_source = &network.state.inter_connections;
     let inter_connections_flags_source = &network.state.inter_connections_flags;
     let g_settings = &network.g_settings;
@@ -252,11 +252,10 @@ pub fn check_attempt(network: &mut Network) {
     );
 
     let now = Instant::now();
-    zipped
+    let operation = zipped
     .into_iter()
     .enumerate()
     .par_bridge()
-    .into_par_iter()
     .for_each(|(neuron_a_index, (inter_connections, inter_connections_flags))| {
         let node_index_offset = neuron_a_index * g_settings.n_nodes;
         for (node_a_local_index, connection_a) in inter_connections.into_iter().enumerate() {
@@ -288,6 +287,7 @@ pub fn check_attempt(network: &mut Network) {
             }
         }
     });
+    pool.install(|| operation);
     trace!("It took {:?} to check compete interconnections", now.elapsed());
 }
 
@@ -315,7 +315,7 @@ fn get_bond_force_between_two_connections(
 fn update_main_connection(
     node_a_global_index: usize,
     connection_a: &InterConnection,
-    flags: &Flags,
+    _flags: &Flags,
     model: &Model,
     precalculated: &[&Array1<f32>],
     nodes: &Array3<u8>,

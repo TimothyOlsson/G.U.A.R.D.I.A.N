@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use tracing::{trace, debug};
+use tracing::trace;
 use ndarray::{s, Axis};
 use itertools::multizip;
 use ndarray::parallel::prelude::*;
@@ -15,7 +15,7 @@ const NODE_B: usize = 2;
 const DELTA_NODE_A: usize = 0;
 const DELTA_NODE_B: usize = 1;
 
-pub fn update_intraconnected_nodes(network: &mut Network) {
+pub fn update(network: &mut Network, pool: &ThreadPool) {
     let nodes = &mut network.state.nodes;
     let neuron_states = &network.state.neuron_states;
     let intra_connections = &network.state.intra_connections;
@@ -32,10 +32,9 @@ pub fn update_intraconnected_nodes(network: &mut Network) {
     );
 
     let now = Instant::now();
-    zipped
+    let operation = zipped
     .into_iter()
     .par_bridge()
-    .into_par_iter()
     .for_each(|(neuron_state, mut node_states_source, intra_connections)| {
         let neuron_state = unpack_array(neuron_state);
         let precalculated_neuron_state = model.precalculate(NEURON_STATE, neuron_state.view());
@@ -73,5 +72,6 @@ pub fn update_intraconnected_nodes(network: &mut Network) {
         let updated_node_states = pack_array(updated_node_states);
         node_states_source.assign(&updated_node_states);
     });
+    pool.install(|| operation);
     trace!("It took {:?} to update intraconnection states", now.elapsed());
 }
