@@ -6,7 +6,7 @@ resolver = "2"
 
 [workspace.package]
 version = "0.1.0"
-description = "Genetic Unsupervised Asynchronous Recurrent Distributed Interconnected Artificial Neurons"
+description = "Genetic Unsupervised Adaptive Recurrent Distributed Interconnected Artificial Neurons"
 edition = "2021"
 authors = ["Timothy Bergström <timothy.bergstrom@gmail.com>"]
 homepage = ""
