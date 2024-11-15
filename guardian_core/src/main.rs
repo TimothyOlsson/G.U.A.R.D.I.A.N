@@ -3,6 +3,7 @@ use tracing::{debug, info, Level};
 use tracing_subscriber::FmtSubscriber;
 use rayon::ThreadPoolBuilder;
 use rand::SeedableRng;
+use indicatif::{ProgressBar, ProgressStyle};
 
 use glib::cpu::interface::{Genome, State, Network};
 use glib::cpu::process::update;
@@ -42,12 +43,15 @@ async fn main() {
     };
 
     let mut state_history = vec![network.state.clone()];
-    for i in 0..256 {
-        info!("Iteration {i}");
+    let total = 128;
+    let pb = ProgressBar::new(total);
+    pb.set_style(
+        ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{bar}] {per_sec} {pos}/{len} eta ({eta_precise})").unwrap()
+    );
+    for _ in 0..total {
         update(&mut network, &pool);
-        debug!("Nodes \n{:#?}", network.state.nodes);
-        debug!("NeuronStates \n{:#?}", network.state.neuron_states);
         state_history.push(network.state.clone());
+        pb.inc(1);
     }
     visualization::graph::visualize_network(state_history, &g_settings, &n_settings);
 }
