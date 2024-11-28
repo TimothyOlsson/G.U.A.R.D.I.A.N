@@ -131,12 +131,14 @@ pub struct GuardianSettings {
     pub n_interconnected_nodes_search: usize,  // TODO: Better name, -offset..offset
     pub n_interconnected_neuron_search: usize,
     pub n_intraconnected_nodes_search: usize,
+    pub interconnection_max_connection_time: usize,
+    pub intraconnection_max_connection_time: usize,
 
     // Network
     // TODO: Add sizes?
 
     // IO
-    // TODO: Add io sizes? Dynamic
+    // TODO: Add io sizes? Dynamic?
 
     // Genome
     hidden_sizes: Vec<usize>
@@ -153,7 +155,7 @@ pub struct NetworkSettings {
 impl Default for NetworkSettings {
     fn default() -> Self {
         Self {
-            n_neurons: 10_000,
+            n_neurons: 128,
             n_io_ports: 0,
             n_network_ports: 0,
             neurons_per_network_connection: 16
@@ -182,7 +184,9 @@ impl Default for GuardianSettings {
             n_interconnected_nodes_search: 4,
             n_interconnected_neuron_search: 1,
             n_intraconnected_nodes_search: 1,
-            hidden_sizes: vec![128]
+            interconnection_max_connection_time: 8,
+            intraconnection_max_connection_time: 8,
+            hidden_sizes: vec![64, 64]
         }
     }
 }
@@ -197,6 +201,8 @@ impl GuardianSettings {
             n_interconnected_nodes_search: 4,
             n_interconnected_neuron_search: 1,
             n_intraconnected_nodes_search: 1,
+            interconnection_max_connection_time: 8,
+            intraconnection_max_connection_time: 8,
             hidden_sizes: vec![64, 64]
         }
     }
@@ -230,15 +236,4 @@ pub fn get_network_size(g_settings: &GuardianSettings, n_settings: &NetworkSetti
 
 pub fn get_genome_size() {
 
-}
-
-/// Could use a struct, but that becomes a hassle when unpacking
-pub fn node_global_to_local_index(node_global_index: usize, g_settings: &GuardianSettings) -> (usize, usize) {
-    let neuron_index = node_global_index / g_settings.n_nodes_per_neuron;  // Faster if n_interconnected_nodes is the power of 2, then could do bit-shifting instead
-    let node_local_index = node_global_index - (neuron_index * g_settings.n_nodes_per_neuron);
-    (neuron_index, node_local_index)
-}
-
-pub fn node_local_to_global_index(neuron_index: usize, node_local_index: usize, g_settings: &GuardianSettings) -> usize {
-    neuron_index * g_settings.n_nodes_per_neuron + node_local_index
 }

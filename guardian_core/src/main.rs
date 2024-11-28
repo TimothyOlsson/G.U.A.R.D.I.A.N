@@ -13,7 +13,7 @@ use glib::visualization;
 #[main]
 async fn main() {
     let subscriber = FmtSubscriber::builder()
-    .with_max_level(Level::INFO)
+    .with_max_level(Level::TRACE)
     .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
     info!("RUNNING");
@@ -21,8 +21,8 @@ async fn main() {
 
     let thread_count = std::thread::available_parallelism().unwrap().get();
     let pool = ThreadPoolBuilder::new().num_threads(thread_count).build().unwrap();
-    let g_settings = GuardianSettings::downlevel_default();
-    let n_settings = NetworkSettings::downlevel_default();
+    let g_settings = GuardianSettings::default();
+    let n_settings = NetworkSettings::default();
     get_network_size(&g_settings, &n_settings);
     let rng = rand::rngs::StdRng::seed_from_u64(6);
     let genome = Genome::new(&g_settings, &n_settings, Some(rng.clone()));
