@@ -324,7 +324,7 @@ function plot_node_details() {
 }
 
 function update_selected_connection() {
-    var connection = nip.selection.connection;
+    var connection = nip.selection;
     if (connection.connection_id == null) {
         // This is an interconnection or pending interconnection
         var [neuron, node] = connection.source;
@@ -482,7 +482,7 @@ function is_higher(connection_a, connection_b) {
 }
 
 function init_links() {
-    var link_width_k = 1.5 / 255;  // 0 to 255
+    var link_width_k = 1.5 / 4.0;  // -2.0 to 2.0 -> 0 to 4
     var link_width_m = 0.25;
     var index = 0;
     for (var connection_type of [interconnections, pending_interconnections, intraconnections, pending_intraconnections]) {
@@ -529,21 +529,19 @@ function init_links() {
                         if (!connection.show) {
                             connection.lineStyle.color = lightblue;
                         }
-                        var force_a = get_net_force(connection);
-                        var force_b = get_net_force(connection_b);
-                        force = Math.max(force_a, force_b);
+                        force = get_net_force(connection);
                     } else {
                         // Not connected, but can be used for pending search
                         connection.lineStyle.type = "dashed";
                         connection.lineStyle.color = lightred;
                         connection.symbol = forward;
-                        force = 127;
+                        force = 0;
                     }
                 } else {
                     force = get_net_force(connection);
                 }
                 // Calculate width
-                var width = link_width_k * force + link_width_m;
+                var width = link_width_k * (force + 2.0) + link_width_m;
                 connection.lineStyle.width = width;
             }
         }
@@ -646,10 +644,10 @@ function update_chart_details() {
     }
     switch (nip.selection_type) {
         case SelectionType.Neuron:
-            plot_neuron_details();
+            //plot_neuron_details();
             break;
         case SelectionType.Node:
-            plot_node_details();
+            //plot_node_details();
             break;
         case SelectionType.Connection:
             update_selected_connection();
