@@ -301,8 +301,8 @@ impl InterConnection {
 
     pub fn reset_main(&self) {
         // The main index is still there
-        self.force_self.store(0, Ordering::Relaxed);
-        self.force_other.store(0, Ordering::Relaxed);
+        self.force_self.store(-127, Ordering::Relaxed);
+        self.force_other.store(-127, Ordering::Relaxed);
     }
 }
 
