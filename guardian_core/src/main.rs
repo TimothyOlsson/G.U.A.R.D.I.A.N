@@ -53,5 +53,6 @@ async fn main() {
         state_history.push(network.state.clone());
         pb.inc(1);
     }
+    pb.finish();
     visualization::graph::visualize_network(state_history, &g_settings, &n_settings);
 }
