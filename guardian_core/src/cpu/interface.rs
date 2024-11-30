@@ -295,7 +295,7 @@ impl InterConnection {
 
     pub fn reset_pending(&self) {
         self.pending_index.store(self.index.load(Ordering::Relaxed), Ordering::Relaxed);
-        self.pending_force_self.store(0, Ordering::Relaxed);  // 0 => -1.0
+        self.pending_force_self.store(0, Ordering::Relaxed);
         self.pending_force_other.store(0, Ordering::Relaxed);
     }
 
@@ -538,7 +538,7 @@ impl Genome {
                 1, // force_self
                 1, // force_other
             ],
-            vec![16, 16],
+            g_settings.hidden_sizes.clone(),
             vec![1],  // delta_force_self,
         ).unwrap();  // We know that this is ok
         let interconnections_update = Model::new(settings, &mut rng).unwrap();
