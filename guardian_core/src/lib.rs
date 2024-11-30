@@ -155,7 +155,7 @@ pub struct NetworkSettings {
 impl Default for NetworkSettings {
     fn default() -> Self {
         Self {
-            n_neurons: 128,
+            n_neurons: 64,
             n_io_ports: 0,
             n_network_ports: 0,
             neurons_per_network_connection: 16
@@ -166,7 +166,7 @@ impl Default for NetworkSettings {
 impl NetworkSettings {
     pub fn downlevel_default() -> Self {
         Self {
-            n_neurons: 8,
+            n_neurons: 16,
             n_io_ports: 0,
             n_network_ports: 0,
             neurons_per_network_connection: 0
@@ -179,7 +179,7 @@ impl Default for GuardianSettings {
         Self {
             node_size: 128,
             neuron_state_size: 2048,
-            n_nodes_per_neuron: 256,
+            n_nodes_per_neuron: 16,
             n_intraconnections_per_node: 4,
             n_interconnected_nodes_search: 4,
             n_interconnected_neuron_search: 1,
@@ -194,8 +194,8 @@ impl Default for GuardianSettings {
 impl GuardianSettings {
     pub fn downlevel_default() -> Self {
         Self {
-            node_size: 4,
-            neuron_state_size: 16,
+            node_size: 16,
+            neuron_state_size: 32,
             n_nodes_per_neuron: 8,
             n_intraconnections_per_node: 4,
             n_interconnected_nodes_search: 4,

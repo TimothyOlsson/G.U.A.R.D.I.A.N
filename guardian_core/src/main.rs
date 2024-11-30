@@ -13,7 +13,7 @@ use glib::visualization;
 #[main]
 async fn main() {
     let subscriber = FmtSubscriber::builder()
-    .with_max_level(Level::TRACE)
+    .with_max_level(Level::DEBUG)
     .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
     info!("RUNNING");
@@ -21,10 +21,10 @@ async fn main() {
 
     let thread_count = std::thread::available_parallelism().unwrap().get();
     let pool = ThreadPoolBuilder::new().num_threads(thread_count).build().unwrap();
-    let g_settings = GuardianSettings::default();
-    let n_settings = NetworkSettings::default();
+    let g_settings = GuardianSettings::downlevel_default();
+    let n_settings = NetworkSettings::downlevel_default();
     get_network_size(&g_settings, &n_settings);
-    let rng = rand::rngs::StdRng::seed_from_u64(6);
+    let rng = rand::rngs::StdRng::seed_from_u64(1);
     let genome = Genome::new(&g_settings, &n_settings, Some(rng.clone()));
     let mut state = State::new(&g_settings, &n_settings);
     debug!("Randomizing");
@@ -43,7 +43,7 @@ async fn main() {
     };
 
     let mut state_history = vec![network.state.clone()];
-    let total = 128;
+    let total = 64;
     let pb = ProgressBar::new(total);
     pb.set_style(
         ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{bar}] {per_sec} {pos}/{len} eta ({eta_precise})").unwrap()
