@@ -417,8 +417,8 @@ function plot_connection_details() {
         },
         yAxis: {
             type: 'value',
-            min: -2.0,
-            max: 2.0,
+            min: -254.0,
+            max: 254.0,
         },
         tooltip: {},
         label : {show: true},
@@ -482,7 +482,7 @@ function is_higher(connection_a, connection_b) {
 }
 
 function init_links() {
-    var link_width_k = 1.5 / 4.0;  // -2.0 to 2.0 -> 0 to 4
+    var link_width_k = 1.5 / 254;  // 0 to 254
     var link_width_m = 0.25;
     var index = 0;
     for (var connection_type of [interconnections, pending_interconnections, intraconnections, pending_intraconnections]) {
@@ -541,7 +541,7 @@ function init_links() {
                     force = get_net_force(connection);
                 }
                 // Calculate width
-                var width = link_width_k * (force + 2.0) + link_width_m;
+                var width = link_width_k * Math.max((force + 2.0), 0) + link_width_m;
                 connection.lineStyle.width = width;
             }
         }
