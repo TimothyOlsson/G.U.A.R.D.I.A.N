@@ -41,13 +41,15 @@ pub fn visualize_network(state_history: Vec<State>, g_settings: &GuardianSetting
     let mut pending_interconnections = vec![];
     let mut intraconnections = vec![];
     let mut pending_intraconnections = vec![];
+    let mut interconnection_counters = vec![];
+    let mut intraconnection_counters = vec![];
     for state in state_history.iter() {
 
         // Add interconnections
         let connections = state.inter_connections.indexed_iter().map(|((neuron, node), connection)| {
             let node_b_global_index = connection.get_index();
             let (target_neuron, target_node) = node_global_to_local_index(node_b_global_index, g_settings);
-            let (force_self, force_other) = connection.get_forces();
+            let (force_self, force_other) = connection.get_raw_force_values();
             format!("{{ source: [{neuron}, {node}], target: [{target_neuron}, {target_node}], force_self: {force_self}, force_other: {force_other} }}")
         })
         .collect();
@@ -59,7 +61,7 @@ pub fn visualize_network(state_history: Vec<State>, g_settings: &GuardianSetting
         let connections = state.inter_connections.indexed_iter().map(|((neuron, node), connection)| {
             let node_b_global_index = connection.get_pending_index();
             let (target_neuron, target_node) = node_global_to_local_index(node_b_global_index, g_settings);
-            let (force_self, force_other) = connection.get_pending_forces();
+            let (force_self, force_other) = connection.get_raw_pending_force_values();
             format!("{{ source: [{neuron}, {node}], target: [{target_neuron}, {target_node}], force_self: {force_self}, force_other: {force_other} }}")
         })
         .collect();
@@ -70,7 +72,7 @@ pub fn visualize_network(state_history: Vec<State>, g_settings: &GuardianSetting
         // Add intraconnections
         let connections = state.intra_connections.indexed_iter().map(|((neuron, node, _), connection)| {
             let target_node = connection.get_index();
-            let (force_self, force_other) = connection.get_forces();
+            let (force_self, force_other) = connection.get_raw_force_values();
             format!("{{ source: [{neuron}, {node}], target: [{neuron}, {target_node}], force_self: {force_self}, force_other: {force_other} }}")
         })
         .collect();
@@ -81,19 +83,43 @@ pub fn visualize_network(state_history: Vec<State>, g_settings: &GuardianSetting
         // Add pending interconnections
         let connections = state.intra_connections.indexed_iter().map(|((neuron, node, _), connection)| {
             let target_node = connection.get_pending_index();
-            let (force_self, force_other) = connection.get_pending_forces();
+            let (force_self, force_other) = connection.get_raw_pending_force_values();
             format!("{{ source: [{neuron}, {node}], target: [{neuron}, {target_node}], force_self: {force_self}, force_other: {force_other} }}")
         })
         .collect();
         let connections = Array::from_shape_vec(state.intra_connections.shape(), connections).unwrap();
         let connections = arr_to_string(&connections);
         pending_intraconnections.push(connections);
+
+        // Add interconnections counters
+        let counters = state.inter_connection_counters.indexed_iter().map(|((_, _), counter)| {
+            let value = counter.get_value();
+            let state = counter.get_state(g_settings);
+            format!("{{ value: {value}, state: {state:?} }}")
+        })
+        .collect();
+        let counters = Array::from_shape_vec(state.inter_connection_counters.shape(), counters).unwrap();
+        let counters = arr_to_string(&counters);
+        interconnection_counters.push(counters);
+
+        // Add intraconnections counters
+        let counters = state.intra_connection_counters.indexed_iter().map(|((_, _, _), counter)| {
+            let value = counter.get_value();
+            let state = counter.get_state(g_settings);
+            format!("{{ value: {value}, state: {state:?} }}")
+        })
+        .collect();
+        let counters = Array::from_shape_vec(state.intra_connection_counters.shape(), counters).unwrap();
+        let counters = arr_to_string(&counters);
+        intraconnection_counters.push(counters);
     }
 
     add_param(&mut data, "interconnections", interconnections);
     add_param(&mut data, "pending_interconnections", pending_interconnections);
     add_param(&mut data, "intraconnections", intraconnections);
     add_param(&mut data, "pending_intraconnections", pending_intraconnections);
+    add_param(&mut data, "interconnection_counters", interconnection_counters);
+    add_param(&mut data, "intraconnection_counters", intraconnection_counters);
 
     // Add states
     let mut node_states = vec![];

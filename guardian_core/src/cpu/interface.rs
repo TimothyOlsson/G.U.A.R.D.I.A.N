@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicU32, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicI8, AtomicU32, AtomicU8, Ordering};
 
 use ndarray::prelude::*;
 use rand::distributions::{Distribution, Uniform};
@@ -7,7 +7,7 @@ use rand::SeedableRng;
 
 use crate::{NetworkSettings, GuardianSettings};
 
-use super::{pack_with_negative, unpack_with_negative, NEGATIVE_PACK_MIDPOINT};
+use super::{pack_with_negative, unpack_with_negative};
 use super::model::{Model, ModelSettings};
 
 #[derive(Debug)]
@@ -16,7 +16,7 @@ pub struct CounterInterConnection(AtomicU8);
 #[derive(Debug, Clone)]
 pub struct CounterIntraConnection(u8);
 
-
+#[derive(Debug)]
 pub enum NodeState {
     Searching,
     Connecting,
@@ -63,16 +63,16 @@ pub struct Network {
 pub struct InterConnection {
     pub index: AtomicU32,
     pub pending_index: AtomicU32,  // The one with the highest index "wins"
-    pub force_self: AtomicU8,
+    pub force_self: AtomicI8,
     // Why this is added:
     // In practice, the other InterConnection will have that value in force_self
     // However, adding this have some benifits:
     // * Alignment is divisible by 4 bytes
     // * All information needed is in the InterConnection during gradient search
     // * Can use this as a check if the connection is connected or not
-    pub force_other: AtomicU8,
-    pub pending_force_self: AtomicU8,
-    pub pending_force_other: AtomicU8,
+    pub force_other: AtomicI8,
+    pub pending_force_self: AtomicI8,
+    pub pending_force_other: AtomicI8,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -80,10 +80,10 @@ pub struct InterConnection {
 pub struct IntraConnection {
     pub index: u16,
     pub pending_index: u16,
-    pub force_self: u8,
-    pub force_other: u8,
-    pub pending_force_self: u8,
-    pub pending_force_other: u8,
+    pub force_self: i8,
+    pub force_other: i8,
+    pub pending_force_self: i8,
+    pub pending_force_other: i8,
 }
 
 impl Clone for CounterInterConnection {
@@ -95,6 +95,10 @@ impl Clone for CounterInterConnection {
 impl CounterInterConnection {
     pub fn new() -> Self {
         Self(AtomicU8::new(0))
+    }
+
+    pub fn get_value(&self) -> u8 {
+        self.0.load(Ordering::Relaxed)
     }
 
     pub fn get_state(&self, g_settings: &GuardianSettings) -> NodeState {  // TODO: Set failed state from g_settings
@@ -121,6 +125,11 @@ impl CounterInterConnection {
         self.0.store(0xFF, Ordering::Relaxed);
     }
 
+    pub fn failed(&self) {
+        // Back to seaching
+        self.0.store(0xFE, Ordering::Relaxed);
+    }
+
     pub fn reset(&self) {
         // Back to seaching
         self.0.store(0, Ordering::Relaxed);
@@ -130,6 +139,10 @@ impl CounterInterConnection {
 impl CounterIntraConnection {
     pub fn new() -> Self {
         Self(0)
+    }
+
+    pub fn get_value(&self) -> u8 {
+        self.0
     }
 
     pub fn get_state(&self, g_settings: &GuardianSettings) -> NodeState {  // TODO: Set failed state from g_settings
@@ -168,10 +181,10 @@ impl Clone for InterConnection {
     fn clone(&self) -> Self {
         let index = AtomicU32::new(self.index.load(Ordering::Relaxed));
         let pending_index = AtomicU32::new(self.pending_index.load(Ordering::Relaxed));
-        let force_self =  AtomicU8::new(self.force_self.load(Ordering::Relaxed));
-        let force_other =  AtomicU8::new(self.force_other.load(Ordering::Relaxed));
-        let pending_force_self =  AtomicU8::new(self.pending_force_self.load(Ordering::Relaxed));
-        let pending_force_other =  AtomicU8::new(self.pending_force_other.load(Ordering::Relaxed));
+        let force_self =  AtomicI8::new(self.force_self.load(Ordering::Relaxed));
+        let force_other =  AtomicI8::new(self.force_other.load(Ordering::Relaxed));
+        let pending_force_self =  AtomicI8::new(self.pending_force_self.load(Ordering::Relaxed));
+        let pending_force_other =  AtomicI8::new(self.pending_force_other.load(Ordering::Relaxed));
         Self {
             index,
             pending_index,
@@ -206,6 +219,20 @@ impl InterConnection {
         (
             unpack_with_negative(self.pending_force_self.load(Ordering::Relaxed)),
             unpack_with_negative(self.pending_force_other.load(Ordering::Relaxed))
+        )
+    }
+
+    pub fn get_raw_force_values(&self) -> (i8, i8) {
+        (
+            self.force_self.load(Ordering::Relaxed),
+            self.force_other.load(Ordering::Relaxed)
+        )
+    }
+
+    pub fn get_raw_pending_force_values(&self) -> (i8, i8) {
+        (
+            self.pending_force_self.load(Ordering::Relaxed),
+            self.pending_force_other.load(Ordering::Relaxed)
         )
     }
 
@@ -268,14 +295,14 @@ impl InterConnection {
 
     pub fn reset_pending(&self) {
         self.pending_index.store(self.index.load(Ordering::Relaxed), Ordering::Relaxed);
-        self.pending_force_self.store(NEGATIVE_PACK_MIDPOINT, Ordering::Relaxed);
-        self.pending_force_other.store(NEGATIVE_PACK_MIDPOINT, Ordering::Relaxed);
+        self.pending_force_self.store(0, Ordering::Relaxed);  // 0 => -1.0
+        self.pending_force_other.store(0, Ordering::Relaxed);
     }
 
     pub fn reset_main(&self) {
         // The main index is still there
-        self.force_self.store(NEGATIVE_PACK_MIDPOINT, Ordering::Relaxed);
-        self.force_other.store(NEGATIVE_PACK_MIDPOINT, Ordering::Relaxed);
+        self.force_self.store(0, Ordering::Relaxed);
+        self.force_other.store(0, Ordering::Relaxed);
     }
 }
 
@@ -300,6 +327,20 @@ impl IntraConnection {
         (
             unpack_with_negative(self.pending_force_self),
             unpack_with_negative(self.pending_force_other)
+        )
+    }
+
+    pub fn get_raw_pending_force_values(&self) -> (i8, i8) {
+        (
+            self.pending_force_self,
+            self.pending_force_other
+        )
+    }
+
+    pub fn get_raw_force_values(&self) -> (i8, i8) {
+        (
+            self.force_self,
+            self.force_other
         )
     }
 
@@ -340,8 +381,8 @@ impl IntraConnection {
 
     pub fn reset_pending(&mut self) {
         self.pending_index = self.index;
-        self.pending_force_self = NEGATIVE_PACK_MIDPOINT;
-        self.pending_force_other = NEGATIVE_PACK_MIDPOINT;
+        self.pending_force_self = -127;
+        self.pending_force_other = -127;
     }
 }
 
@@ -497,7 +538,7 @@ impl Genome {
                 1, // force_self
                 1, // force_other
             ],
-            g_settings.hidden_sizes.clone(),
+            vec![16, 16],
             vec![1],  // delta_force_self,
         ).unwrap();  // We know that this is ok
         let interconnections_update = Model::new(settings, &mut rng).unwrap();

@@ -15,7 +15,7 @@ pub fn wrap_index(local_index: usize, offset: isize, max_index: usize) -> usize 
 }
 
 pub fn pack(value: f32) -> u8 {
-    (value.min(1.0) * 255.0).max(0.0).round() as u8
+    (value.clamp(0.0, 1.0) * 255.0).round() as u8
 }
 
 // 1 / 255  <-- precomputed, multiply is faster than division
@@ -24,14 +24,13 @@ pub fn unpack(packed: u8) -> f32 {
     packed as f32 * DIVIDE_BY_255  // If above u8, a & 255 would needed
 }
 
-pub fn pack_with_negative(value: f32) -> u8 {
-    ((value.clamp(-1.0, 1.0) + 1.0) * 127.5).round() as u8
+pub fn pack_with_negative(value: f32) -> i8 {
+    ((value.clamp(-1.0, 1.0)) * 127.0).round() as i8
 }
 
-pub const NEGATIVE_PACK_MIDPOINT: u8 = 128;  // Uneven, so it will be around 0.003921628
-const DIVIDE_BY_127_5: f32 = 1.0 / 127.5;
-pub fn unpack_with_negative(value: u8) -> f32 {
-    value as f32 * DIVIDE_BY_127_5 - 1.0
+const DIVIDE_BY_127: f32 = 1.0 / 127.0;
+pub fn unpack_with_negative(value: i8) -> f32 {
+    value as f32 * DIVIDE_BY_127
 }
 
 pub fn unpack_array<D>(arr: ArrayView<u8, D>) -> Array<f32, D>

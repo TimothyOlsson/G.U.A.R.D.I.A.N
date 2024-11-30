@@ -217,13 +217,17 @@ fn update_pending_connection(
                 nodes,
                 neuron_states
             );
+            let updated_force_self = force_self + delta_force_self;
+            let updated_force_other = force_other + delta_force_other;
             connection_self.store_pending_forces(
-                force_self + delta_force_self,
-                force_other + delta_force_other
+                updated_force_self,
+                updated_force_other
             );
             let net_force = connection_self.get_net_pending_force();
-            let net_force_to_beat = connection_other.get_net_force();
-            if net_force > net_force_to_beat {
+            let net_force_other_to_beat = connection_other.get_net_force();
+            // TODO: Think about this one! Maybe just enough to beat force_self?
+            let net_force_self_to_beat = connection_self.get_net_force();
+            if net_force > net_force_other_to_beat && net_force > net_force_self_to_beat {
                 counter.saturate();
             } else {
                 counter.inc();
@@ -345,11 +349,11 @@ pub fn attempt_connection(network: &mut Network, pool: &ThreadPool) {
             match (node_state_self, node_state_other) {
                 (
                     NodeState::AttemptingTakeover,
-                    NodeState::AttemptingTakeover
+                    NodeState::AttemptingTakeover | NodeState::Failed
                 ) => {
                     // The other connections is trying to go somewhere else! Here, it is difficult to sync
                     // the connections. Just reset to search mode again
-                    counter_self.reset();
+                    counter_self.failed();
                     connection_self.reset_pending();
                 },
                 (NodeState::AttemptingTakeover, _) => {
@@ -391,6 +395,10 @@ pub fn attempt_connection(network: &mut Network, pool: &ThreadPool) {
                         counter_self.reset();
                     }
                 },
+                NodeState::Failed => {
+                    connection_self.reset_pending();
+                    counter_self.reset();
+                },
                 _ => {}
             }
         }
@@ -401,9 +409,9 @@ pub fn attempt_connection(network: &mut Network, pool: &ThreadPool) {
     // Step 3: Check if it won, in that case, establish the connection
     let now = Instant::now();
     let operation = zipped_iter.clone()
-    .for_each(|(_neuron_index, (inter_connections, counters))| {
-        let iter = inter_connections.iter().zip(counters);
-        for (connection_self, counter_self) in iter {
+    .for_each(|(neuron_index, (inter_connections, counters))| {
+        let iter = inter_connections.iter().zip(counters).enumerate();
+        for (node_local_index_self, (connection_self, counter_self)) in iter {
             let node_state_self = counter_self.get_state(g_settings);
             match node_state_self {
                 NodeState::AttemptingTakeover => {
@@ -411,6 +419,13 @@ pub fn attempt_connection(network: &mut Network, pool: &ThreadPool) {
                     let node_other_global_index = connection_self.get_pending_index();
                     let (neuron_other_index, node_other_local_index) = node_global_to_local_index(node_other_global_index, g_settings);
                     let connection_other = get_inter_connection(neuron_other_index, node_other_local_index, inter_connections_source);
+
+                    let node_global_index_self = node_local_to_global_index(neuron_index, node_local_index_self, g_settings);
+                    if connection_other.get_index() != node_global_index_self {
+                        // Failed, something else with a higher index won
+                        connection_self.reset_pending();
+                        counter_self.reset();
+                    }
 
                     // Index has already been set, just forces
                     let (force_self, force_other) = connection_self.get_pending_forces();
