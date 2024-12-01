@@ -67,7 +67,6 @@ fn update_connections(network: &mut Network, pool: &ThreadPool) {
             let counter_self = counters.get(node_local_index_self).unwrap();
             let precalculated_node_self = model.precalculate(NODE_SELF, node_self.view());
             let precalculated_node_other = model.precalculate(NODE_OTHER, node_self.view());
-            let connection_other = get_other_inter_connection(connection_self, inter_connections_source, g_settings);
 
             // This is not that nice
             let precalculated = [
@@ -79,16 +78,15 @@ fn update_connections(network: &mut Network, pool: &ThreadPool) {
             update_main_connection(
                 node_self_global_index,
                 connection_self,
-                connection_other,
                 model,
                 &precalculated,
                 nodes,
                 neuron_states,
+                inter_connections_source,
                 g_settings
             );
             update_pending_connection(
                 connection_self,
-                connection_other,
                 counter_self,
                 model,
                 &precalculated,
@@ -108,15 +106,16 @@ fn update_connections(network: &mut Network, pool: &ThreadPool) {
 fn update_main_connection(
     node_self_global_index: usize,
     connection_self: &InterConnection,
-    connection_other: &InterConnection,
     model: &Model,
     precalculated: &[&Array1<f32>],
     nodes: &Array3<u8>,
     neuron_states: &Array2<u8>,
+    inter_connections: &Array2<InterConnection>,
     g_settings: &GuardianSettings,
 ) {
     let node_other_global_index = connection_self.get_index();
     let (neuron_other_index, node_other_local_index) = node_global_to_local_index(node_other_global_index, g_settings);
+    let connection_other = get_inter_connection(neuron_other_index, node_other_local_index, inter_connections);
 
     // Not connected anymore!
     if !check_is_connected(node_self_global_index, connection_other) {
@@ -148,7 +147,6 @@ fn update_main_connection(
 /// TODO: Split function? Very big input
 fn update_pending_connection(
     connection_self: &InterConnection,
-    connection_other: &InterConnection,
     counter: &CounterInterConnection,
     model: &Model,
     precalculated: &[&Array1<f32>],
@@ -204,12 +202,13 @@ fn update_pending_connection(
             }
         }
         NodeState::Connecting => {
-            let node_global_index = connection_self.get_pending_index();
+            let node_other_global_index = connection_self.get_index();
+            let (neuron_other_index, node_other_local_index) = node_global_to_local_index(node_other_global_index, g_settings);
+            let connection_other = get_inter_connection(neuron_other_index, node_other_local_index, inter_connections);
             let (force_self, force_other) = connection_self.get_pending_forces();
-            let (neuron_index, node_local_index) = node_global_to_local_index(node_global_index, g_settings);
             let (delta_force_self, delta_force_other) = get_delta_forces(
-                neuron_index,
-                node_local_index,
+                neuron_other_index,
+                node_other_local_index,
                 force_self,
                 force_other,
                 model,
@@ -339,7 +338,7 @@ pub fn attempt_connection(network: &mut Network, pool: &ThreadPool) {
     let operation = zipped_iter.clone()
     .for_each(|(_neuron_index, (inter_connections, counters))| {
         let iter = inter_connections.iter().zip(counters);
-        for (connection_self, counter_self) in iter {
+        for (_node_local_index_self, (connection_self, counter_self)) in iter.enumerate() {
             let node_other_global_index = connection_self.get_pending_index();
             let (neuron_other_index, node_other_local_index) = node_global_to_local_index(node_other_global_index, g_settings);
             let counter_other = get_inter_connection_counter(neuron_other_index, node_other_local_index, inter_connection_counters);

@@ -83,13 +83,6 @@ fn get_inter_connection<'a>(neuron_index: usize, node_local_index: usize, inter_
     inter_connections.get((neuron_index, node_local_index)).unwrap()
 }
 
-fn get_other_inter_connection<'a>(connection_self: &InterConnection, inter_connections: &'a Array2<InterConnection>, g_settings: &GuardianSettings) -> &'a InterConnection {
-    let node_other_global_index = connection_self.get_index();
-    let (neuron_other_index, node_other_local_index) = node_global_to_local_index(node_other_global_index, g_settings);
-    let connection_other = get_inter_connection(neuron_other_index, node_other_local_index, inter_connections);
-    &connection_other
-}
-
 fn get_inter_connection_counter<'a>(neuron_index: usize, node_local_index: usize, inter_connection_counters: &'a Array2<CounterInterConnection>) -> &'a CounterInterConnection {
     inter_connection_counters.get((neuron_index, node_local_index)).unwrap()
 }
