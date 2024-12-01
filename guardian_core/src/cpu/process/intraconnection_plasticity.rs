@@ -58,7 +58,10 @@ pub fn update(network: &mut Network, pool: &ThreadPool) {
                 &precalculated_node
             ];
             let mut node_intra_connections = intra_connections.row_mut(node_local_index_self);
-            let already_connected = node_intra_connections.iter().map(|c| c.get_index()).collect();
+            let already_connected = node_intra_connections
+                .iter()
+                .flat_map(|c| [c.get_index(), c.get_pending_index()])  // TODO: Should even pending be there?
+                .collect();
             for (connection_index, connection) in node_intra_connections.iter_mut().enumerate() {
                 let counter = counters.get_mut((node_local_index_self, connection_index)).unwrap();
                 update_main_connection(
@@ -189,8 +192,12 @@ fn update_pending_connection(
         NodeState::Searching => {
             let mut strongest_net_force = f32::MIN;
             let mut forces = (f32::MIN, f32::MIN);
-            let mut strongest_node_index = 0;
+            let mut strongest_node_index = 0;  // TODO: What if nothing is searched?
             let search: Vec<usize> = get_area_to_search(connection_self, already_connected, g_settings);
+            if search.len() == 0 {  // This search is stuck! It cannot move anywhere. That means the settings are bad
+                connection_self.reset_pending();
+                return;
+            }
             for node_index in search {
                 let (force_self, force_other) = get_pending_delta_forces(
                     node_index,
@@ -207,7 +214,7 @@ fn update_pending_connection(
                     strongest_node_index = node_index;
                 }
             }
-            let pending_index = connection_self.get_pending_index();
+            let pending_index = connection_self.get_pending_index();  // copy
             connection_self.store_pending_index(strongest_node_index);
             if failed_previous && strongest_node_index == pending_index {
                 // Stuck in a local maxima. Force reset
@@ -218,26 +225,36 @@ fn update_pending_connection(
             }
         }
         NodeState::Connecting => {
-            let node_index = connection_self.get_pending_index();
+            let node_index_other = connection_self.get_pending_index();
             let (force_self, force_other) = connection_self.get_pending_forces();
             let (delta_force_self, delta_force_other) = get_pending_delta_forces(
-                node_index,
+                node_index_other,
                 force_self,
                 force_other,
                 model,
                 precalculated,
                 nodes,
             );
+            let updated_force_self = force_self + delta_force_self;
+            let updated_force_other = force_other + delta_force_other;
             connection_self.store_pending_forces(
-                force_self + delta_force_self,
-                force_other + delta_force_other
+                updated_force_self,
+                updated_force_other
             );
-            let net_force = connection_self.get_net_pending_force();
+            let net_force = updated_force_self + updated_force_other;  // Store and load might not always be synced! used other values
             let net_force_to_beat = connection_self.get_net_force();
             if net_force > net_force_to_beat {
                 counter.saturate();
             }
         },
-        _ => {}  // Should never be here
+        NodeState::AttemptingTakeover => {
+            // Nothing to compete to, just do it
+            connection_self.move_pending_to_main();
+            counter.reset();
+        },
+        NodeState::Failed => {
+            connection_self.reset_pending();
+            counter.reset();
+        }
     }
 }
