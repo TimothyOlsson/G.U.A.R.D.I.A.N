@@ -61,7 +61,7 @@ fn update_connections(network: &mut Network, pool: &ThreadPool) {
         let precalculated_neuron_state_other = model.precalculate(NEURON_STATE_OTHER, neuron_state.view());
         let node_index_offset = neuron_index_self * g_settings.n_nodes_per_neuron;
         for (node_local_index_self, node_self) in node_states.rows().into_iter().enumerate() {
-            let node_self_global_index = node_local_index_self + node_index_offset;
+            let node_global_index_self = node_local_index_self + node_index_offset;
             let connection_self = inter_connections.get(node_local_index_self).unwrap();
             let node_self = unpack_array(node_self);
             let counter_self = counters.get(node_local_index_self).unwrap();
@@ -76,7 +76,7 @@ fn update_connections(network: &mut Network, pool: &ThreadPool) {
                 &precalculated_node_other
             ];
             update_main_connection(
-                node_self_global_index,
+                node_global_index_self,
                 connection_self,
                 model,
                 &precalculated,
@@ -86,6 +86,7 @@ fn update_connections(network: &mut Network, pool: &ThreadPool) {
                 g_settings
             );
             update_pending_connection(
+                node_global_index_self,
                 connection_self,
                 counter_self,
                 model,
@@ -104,7 +105,7 @@ fn update_connections(network: &mut Network, pool: &ThreadPool) {
 
 
 fn update_main_connection(
-    node_self_global_index: usize,
+    node_global_index_self: usize,
     connection_self: &InterConnection,
     model: &Model,
     precalculated: &[&Array1<f32>],
@@ -113,23 +114,23 @@ fn update_main_connection(
     inter_connections: &Array2<InterConnection>,
     g_settings: &GuardianSettings,
 ) {
-    let node_other_global_index = connection_self.get_index();
-    let (neuron_other_index, node_other_local_index) = node_global_to_local_index(node_other_global_index, g_settings);
-    let connection_other = get_inter_connection(neuron_other_index, node_other_local_index, inter_connections);
+    let node_global_index_other = connection_self.get_index();
+    let (neuron_index_other, node_local_index_other) = node_global_to_local_index(node_global_index_other, g_settings);
+    let connection_other = get_inter_connection(neuron_index_other, node_local_index_other, inter_connections);
 
     // Not connected anymore!
-    if !check_is_connected(node_self_global_index, connection_other) {
+    if !check_is_connected(node_global_index_self, connection_other) {
         connection_self.reset_main();
         return;
-    } else if node_other_global_index > node_self_global_index {
+    } else if node_global_index_other > node_global_index_self {
         // Highest index calculates both!
         return;
     }
 
     let (force_self, force_other) = connection_self.get_forces();
     let (delta_force_self, delta_force_other) = get_delta_forces(
-        neuron_other_index,
-        node_other_local_index,
+        neuron_index_other,
+        node_local_index_other,
         force_self,
         force_other,
         model,
@@ -146,6 +147,7 @@ fn update_main_connection(
 /// Search neurons side-by-side and the connecting neuron. Same there
 /// TODO: Split function? Very big input
 fn update_pending_connection(
+    _node_global_index_self: usize,
     connection_self: &InterConnection,
     counter: &CounterInterConnection,
     model: &Model,
@@ -156,6 +158,9 @@ fn update_pending_connection(
     g_settings: &GuardianSettings,
     n_settings: &NetworkSettings
 ) {
+    // TODO: Remove later, useful when debugging
+    //let (neuron_index_self, node_local_index_self) = node_global_to_local_index(_node_global_index_self, g_settings);
+
     // Failed -> Searching. Will try one time, otherwise reset
     let failed_previous = match counter.get_state(g_settings) {
         NodeState::Failed => {
@@ -202,13 +207,13 @@ fn update_pending_connection(
             }
         }
         NodeState::Connecting => {
-            let node_other_global_index = connection_self.get_index();
-            let (neuron_other_index, node_other_local_index) = node_global_to_local_index(node_other_global_index, g_settings);
-            let connection_other = get_inter_connection(neuron_other_index, node_other_local_index, inter_connections);
+            let node_global_index_other = connection_self.get_pending_index();
+            let (neuron_index_other, node_local_index_other) = node_global_to_local_index(node_global_index_other, g_settings);
+            let connection_other = get_inter_connection(neuron_index_other, node_local_index_other, inter_connections);
             let (force_self, force_other) = connection_self.get_pending_forces();
             let (delta_force_self, delta_force_other) = get_delta_forces(
-                neuron_other_index,
-                node_other_local_index,
+                neuron_index_other,
+                node_local_index_other,
                 force_self,
                 force_other,
                 model,
@@ -336,12 +341,12 @@ pub fn attempt_connection(network: &mut Network, pool: &ThreadPool) {
     // Step 1: Check if other is also connecting, otherwise, try to connect
     let now = Instant::now();
     let operation = zipped_iter.clone()
-    .for_each(|(_neuron_index, (inter_connections, counters))| {
+    .for_each(|(_neuron_index_self, (inter_connections, counters))| {
         let iter = inter_connections.iter().zip(counters);
         for (_node_local_index_self, (connection_self, counter_self)) in iter.enumerate() {
-            let node_other_global_index = connection_self.get_pending_index();
-            let (neuron_other_index, node_other_local_index) = node_global_to_local_index(node_other_global_index, g_settings);
-            let counter_other = get_inter_connection_counter(neuron_other_index, node_other_local_index, inter_connection_counters);
+            let node_global_index_other = connection_self.get_pending_index();
+            let (neuron_index_other, node_local_index_other) = node_global_to_local_index(node_global_index_other, g_settings);
+            let counter_other = get_inter_connection_counter(neuron_index_other, node_local_index_other, inter_connection_counters);
 
             let node_state_self = counter_self.get_state(g_settings);
             let node_state_other = counter_other.get_state(g_settings);
@@ -358,9 +363,10 @@ pub fn attempt_connection(network: &mut Network, pool: &ThreadPool) {
                 (NodeState::AttemptingTakeover, _) => {
                     // Will attempt to connect
                     // However, since there are 2 values, the highest force that the other connection want wins
-                    let connection_other = get_inter_connection(neuron_other_index, node_other_local_index, inter_connections_source);
+                    let connection_other = get_inter_connection(neuron_index_other, node_local_index_other, inter_connections_source);
                     let (_force_self, force_other) = connection_self.get_pending_forces();
-                    connection_other.add_maximum_force_self(force_other);  // yes, it should be other here!
+                    connection_other.add_maximum_force_self(force_other);  // yes, it should be this order!
+                    connection_other.store_index(0);  // MUST do this, otherwise it will fail if less
                 }
                 _ => {}
             }
@@ -372,21 +378,21 @@ pub fn attempt_connection(network: &mut Network, pool: &ThreadPool) {
     // Step 2: Could be multiple "winners". If multiple that have the exact same value, the highest index wins
     let now = Instant::now();
     let operation = zipped_iter.clone()
-    .for_each(|(neuron_index, (inter_connections, counters))| {
+    .for_each(|(neuron_index_self, (inter_connections, counters))| {
         let iter = inter_connections.iter().zip(counters);
-        for (node_local_index, (connection_self, counter_self)) in iter.enumerate() {
+        for (node_local_index_self, (connection_self, counter_self)) in iter.enumerate() {
             let node_state_self = counter_self.get_state(g_settings);
             match node_state_self {
                 NodeState::AttemptingTakeover => {
-                    let node_other_global_index = connection_self.get_pending_index();
-                    let (neuron_other_index, node_other_local_index) = node_global_to_local_index(node_other_global_index, g_settings);
-                    let connection_other = get_inter_connection(neuron_other_index, node_other_local_index, inter_connections_source);
+                    let node_global_index_other = connection_self.get_pending_index();
+                    let (neuron_index_other, node_local_index_other) = node_global_to_local_index(node_global_index_other, g_settings);
+                    let connection_other = get_inter_connection(neuron_index_other, node_local_index_other, inter_connections_source);
                     let (_, force_other) = connection_self.get_pending_forces();
                     let (force_self, _) = connection_other.get_forces();
                     if force_other == force_self {
                         // This node has won, but there might be multiple!
                         // Thus, the highest index wins
-                        let global_index = node_local_to_global_index(neuron_index, node_local_index, g_settings);
+                        let global_index = node_local_to_global_index(neuron_index_self, node_local_index_self, g_settings);
                         connection_other.add_maximum_index(global_index);
                     } else {
                         // It failed, did not win the competition. Go back to searching
@@ -408,28 +414,30 @@ pub fn attempt_connection(network: &mut Network, pool: &ThreadPool) {
     // Step 3: Check if it won, in that case, establish the connection
     let now = Instant::now();
     let operation = zipped_iter.clone()
-    .for_each(|(neuron_index, (inter_connections, counters))| {
+    .for_each(|(neuron_index_self, (inter_connections, counters))| {
         let iter = inter_connections.iter().zip(counters).enumerate();
         for (node_local_index_self, (connection_self, counter_self)) in iter {
             let node_state_self = counter_self.get_state(g_settings);
             match node_state_self {
                 NodeState::AttemptingTakeover => {
                     // If it is still in this state, it has won and will connect
-                    let node_other_global_index = connection_self.get_pending_index();
-                    let (neuron_other_index, node_other_local_index) = node_global_to_local_index(node_other_global_index, g_settings);
-                    let connection_other = get_inter_connection(neuron_other_index, node_other_local_index, inter_connections_source);
+                    let node_global_index_other = connection_self.get_pending_index();
+                    let (neuron_index_other, node_local_index_other) = node_global_to_local_index(node_global_index_other, g_settings);
+                    let connection_other = get_inter_connection(neuron_index_other, node_local_index_other, inter_connections_source);
 
-                    let node_global_index_self = node_local_to_global_index(neuron_index, node_local_index_self, g_settings);
+                    let node_global_index_self = node_local_to_global_index(neuron_index_self, node_local_index_self, g_settings);
+
                     if connection_other.get_index() != node_global_index_self {
                         // Failed, something else with a higher index won
                         connection_self.reset_pending();
-                        counter_self.reset();
+                    } else {
+                        // Index has already been set, just forces left
+                        // NOTE: This order should be correct, might not synced properly otherwise with atomics
+                        let (force_self, force_other) = connection_self.get_pending_forces();
+                        connection_self.move_pending_to_main();
+                        connection_other.store_forces(force_other, force_self);  // Yes, it should be this way
                     }
-
-                    // Index has already been set, just forces
-                    let (force_self, force_other) = connection_self.get_pending_forces();
-                    connection_self.move_pending_to_main();  // This order is correct, otherwise it might take the wrong one!
-                    connection_other.store_forces(force_other, force_self);  // Yes, it should be this way
+                    counter_self.reset();  // Always reset here, no matter what happens
                 },
                 _ => {}
             }
