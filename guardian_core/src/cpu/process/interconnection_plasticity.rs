@@ -164,6 +164,7 @@ fn update_pending_connection(
     // Failed -> Searching. Will try one time, otherwise reset
     let failed_previous = match counter.get_state(g_settings) {
         NodeState::Failed => {
+            connection_self.reset_pending_forces();
             counter.reset();
             true
         },
@@ -202,8 +203,6 @@ fn update_pending_connection(
             } else if pending_index == highest_index {  // found local maximum, nothing higher around. Attempt connection
                 counter.inc();
                 connection_self.store_pending_forces(forces.0, forces.1);
-            } else {
-                connection_self.store_pending_forces(0.0, 0.0);
             }
         }
         NodeState::Connecting => {

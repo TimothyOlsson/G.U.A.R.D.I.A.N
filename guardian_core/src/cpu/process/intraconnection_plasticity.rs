@@ -1,6 +1,7 @@
 use std::time::Instant;
 use std::ops::Range;
 
+use itertools::Itertools;
 use ndarray::{Array1, Array2, Axis};
 use itertools::multizip;
 use ndarray::parallel::prelude::*;
@@ -58,10 +59,6 @@ pub fn update(network: &mut Network, pool: &ThreadPool) {
                 &precalculated_node
             ];
             let mut node_intra_connections = intra_connections.row_mut(node_local_index_self);
-            let already_connected = node_intra_connections
-                .iter()
-                .flat_map(|c| [c.get_index(), c.get_pending_index()])  // TODO: Should even pending be there?
-                .collect();
             for (connection_index, connection) in node_intra_connections.iter_mut().enumerate() {
                 let counter = counters.get_mut((node_local_index_self, connection_index)).unwrap();
                 update_main_connection(
@@ -77,10 +74,40 @@ pub fn update(network: &mut Network, pool: &ThreadPool) {
                     &node_states,
                     counter,
                     g_settings,
-                    &already_connected,
                 );
             }
-        }
+
+            // Compare against each other, the highest main will win and kick out the rest
+            let mut disconnect = vec![false; g_settings.n_intraconnections_per_node];
+            for comb in node_intra_connections.iter().enumerate().combinations(2) {
+                let (a_index, a) = comb[0];
+                let (b_index, b) = comb[1];
+                if a.get_index() != b.get_index() {
+                    continue;  // Not the same
+                }
+                let force_a = a.get_net_force();
+                let force_b = b.get_net_force();
+                if force_a == force_b {
+                    // Highest index wins
+                    if b_index > a_index {
+                        disconnect[a_index] = true;
+                    } else {
+                        disconnect[b_index] = true;
+                    }
+                } else if force_b > force_a {
+                    // kick out a
+                    disconnect[a_index] = true;
+                } else if force_a > force_b {
+                    // kick out b
+                    disconnect[b_index] = true;
+                }
+            }
+            for (connection, should_disconnect) in node_intra_connections.iter_mut().zip(disconnect) {
+                if should_disconnect {
+                    connection.reset_pending();
+                }
+            }
+    }
     });
     pool.install(|| operation);
     trace!("It took {:?} to update intraconnections", now.elapsed());
@@ -135,7 +162,6 @@ fn update_main_connection(
 
 fn get_area_to_search(
     connection_self: &IntraConnection,
-    already_connected: &Vec<usize>,
     g_settings: &GuardianSettings,
 ) -> Vec<usize> {
     // Start with searching neuron and vicinity where pending is index
@@ -154,9 +180,6 @@ fn get_area_to_search(
                 break;
             }
             let node_local_index = wrap_index(pending_node, node_offset, g_settings.n_nodes_per_neuron);
-            if already_connected.contains(&node_local_index) {
-                continue;
-            }
             search.push(node_local_index);
             n_searched += 1;
         }
@@ -167,9 +190,6 @@ fn get_area_to_search(
     search
 }
 
-
-/// Search neurons side-by-side and the connecting neuron. Same there
-/// TODO: Split function? Very big input
 fn update_pending_connection(
     connection_self: &mut IntraConnection,
     model: &Model,
@@ -177,11 +197,10 @@ fn update_pending_connection(
     nodes: &Array2<f32>,
     counter: &mut CounterIntraConnection,
     g_settings: &GuardianSettings,
-    //_intra_connections: &ArrayViewMut2<IntraConnection>,
-    already_connected: &Vec<usize>,
 ) {
     let failed_previous = match counter.get_state(g_settings) {
         NodeState::Failed => {
+            connection_self.reset_pending_forces();
             counter.reset();
             true
         },
@@ -193,7 +212,7 @@ fn update_pending_connection(
             let mut strongest_net_force = f32::MIN;
             let mut forces = (f32::MIN, f32::MIN);
             let mut strongest_node_index = 0;  // TODO: What if nothing is searched?
-            let search: Vec<usize> = get_area_to_search(connection_self, already_connected, g_settings);
+            let search: Vec<usize> = get_area_to_search(connection_self, g_settings);
             if search.len() == 0 {  // This search is stuck! It cannot move anywhere. That means the settings are bad
                 connection_self.reset_pending();
                 return;
@@ -245,6 +264,8 @@ fn update_pending_connection(
             let net_force_to_beat = connection_self.get_net_force();
             if net_force > net_force_to_beat {
                 counter.saturate();
+            } else {
+                counter.inc();
             }
         },
         NodeState::AttemptingTakeover => {

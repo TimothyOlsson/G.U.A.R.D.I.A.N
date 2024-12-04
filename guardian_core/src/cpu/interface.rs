@@ -109,7 +109,7 @@ impl CounterInterConnection {
         }
         let state = match value {
             0xFF => NodeState::AttemptingTakeover,
-            0xFE => NodeState::Failed,  // Not needed
+            0xFE => NodeState::Failed,
             0x00 => NodeState::Searching,
             _ => NodeState::Connecting
         };
@@ -153,7 +153,7 @@ impl CounterIntraConnection {
         }
         let state = match value {
             0xFF => NodeState::AttemptingTakeover,
-            0xFE => NodeState::Failed,  // Not needed
+            0xFE => NodeState::Failed,
             0x00 => NodeState::Searching,
             _ => NodeState::Connecting
         };
@@ -293,10 +293,15 @@ impl InterConnection {
         self.force_other.store(self.pending_force_other.load(Ordering::Relaxed), Ordering::Relaxed);
     }
 
+    pub fn reset_pending_forces(&self) {
+        self.pending_force_self.store(-127, Ordering::Relaxed);
+        self.pending_force_other.store(-127, Ordering::Relaxed);
+    }
+
     pub fn reset_pending(&self) {
         self.pending_index.store(self.index.load(Ordering::Relaxed), Ordering::Relaxed);
-        self.pending_force_self.store(0, Ordering::Relaxed);
-        self.pending_force_other.store(0, Ordering::Relaxed);
+        self.pending_force_self.store(-127, Ordering::Relaxed);
+        self.pending_force_other.store(-127, Ordering::Relaxed);
     }
 
     pub fn reset_main(&self) {
@@ -381,6 +386,11 @@ impl IntraConnection {
 
     pub fn reset_pending(&mut self) {
         self.pending_index = self.index;
+        self.pending_force_self = -127;
+        self.pending_force_other = -127;
+    }
+
+    pub fn reset_pending_forces(&mut self) {
         self.pending_force_self = -127;
         self.pending_force_other = -127;
     }
@@ -496,7 +506,7 @@ impl Genome {
             ],
             g_settings.hidden_sizes.clone(),
             vec![g_settings.node_size],
-        ).unwrap();  // We know that this is ok
+        ).unwrap();
         let interconnected_node_state_update = Model::new(settings, &mut rng).unwrap();
 
         // Intraconnected
@@ -511,7 +521,7 @@ impl Genome {
                 g_settings.node_size,
                 g_settings.node_size
             ],
-        ).unwrap();  // We know that this is ok
+        ).unwrap();
         let intraconnected_node_state_update = Model::new(settings, &mut rng).unwrap();
 
         // Neuron state
@@ -525,7 +535,7 @@ impl Genome {
                 g_settings.neuron_state_size,
                 g_settings.node_size
             ],
-        ).unwrap();  // We know that this is ok
+        ).unwrap();
         let neuron_state_update = Model::new(settings, &mut rng).unwrap();
 
         // Interconnections
@@ -540,7 +550,7 @@ impl Genome {
             ],
             g_settings.hidden_sizes.clone(),
             vec![1],  // delta_force_self,
-        ).unwrap();  // We know that this is ok
+        ).unwrap();
         let interconnections_update = Model::new(settings, &mut rng).unwrap();
 
         // Intraconnections
@@ -554,7 +564,7 @@ impl Genome {
             ],
             g_settings.hidden_sizes.clone(),
             vec![1, 1],  // delta_force_self
-        ).unwrap();  // We know that this is ok
+        ).unwrap();
         let intraconnections_update = Model::new(settings, &mut rng).unwrap();
 
         Self {
