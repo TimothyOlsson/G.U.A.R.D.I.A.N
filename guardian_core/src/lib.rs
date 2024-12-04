@@ -131,8 +131,12 @@ pub struct GuardianSettings {
     pub n_interconnected_nodes_search: usize,  // TODO: Better name, -offset..offset
     pub n_interconnected_neuron_search: usize,
     pub n_intraconnected_nodes_search: usize,
+
+    // Plasticity
     pub interconnection_max_connection_time: usize,
     pub intraconnection_max_connection_time: usize,
+    pub interconnection_max_search_time: usize,
+    pub intraconnection_max_search_time: usize,
 
     // Network
     // TODO: Add sizes?
@@ -186,6 +190,8 @@ impl Default for GuardianSettings {
             n_intraconnected_nodes_search: 1,
             interconnection_max_connection_time: 8,
             intraconnection_max_connection_time: 8,
+            interconnection_max_search_time: 8,
+            intraconnection_max_search_time: 8,
             hidden_sizes: vec![64, 64]
         }
     }
@@ -203,6 +209,8 @@ impl GuardianSettings {
             n_intraconnected_nodes_search: 1,
             interconnection_max_connection_time: 8,
             intraconnection_max_connection_time: 8,
+            interconnection_max_search_time: 8,
+            intraconnection_max_search_time: 8,
             hidden_sizes: vec![64, 64]
         }
     }
