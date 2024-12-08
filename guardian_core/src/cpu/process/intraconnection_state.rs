@@ -5,15 +5,19 @@ use ndarray::{s, Axis};
 use itertools::multizip;
 use ndarray::parallel::prelude::*;
 use rayon::iter::ParallelBridge;
+use rayon::ThreadPool;
 
 use crate::cpu::interface::Network;
-use super::*;
+use crate::cpu::*;
 
+// Input
 const NEURON_STATE: usize = 0;
-const NODE_A: usize = 1;
-const NODE_B: usize = 2;
-const DELTA_NODE_A: usize = 0;
-const DELTA_NODE_B: usize = 1;
+const NODE_SELF: usize = 1;
+const NODE_OTHER: usize = 2;
+
+// Output
+const DELTA_NODE_SELF: usize = 0;
+const DELTA_NODE_OTHER: usize = 1;
 
 pub fn update(network: &mut Network, pool: &ThreadPool) {
     let nodes = &mut network.state.nodes;
@@ -41,30 +45,30 @@ pub fn update(network: &mut Network, pool: &ThreadPool) {
         let node_states = unpack_array(node_states_source.view());
         let mut delta_node_states_min = Array2::from_elem((g_settings.n_nodes_per_neuron, g_settings.node_size), 0.0);
         let mut delta_node_states_max = Array2::from_elem((g_settings.n_nodes_per_neuron, g_settings.node_size), 0.0);
-        for (node_a_local_index, node_a) in node_states.rows().into_iter().enumerate() {
-            let precalculated_node = model.precalculate(NODE_A, node_a);
-            let connections = intra_connections.row(node_a_local_index);
+        for (node_local_index_self, node_state_self) in node_states.rows().into_iter().enumerate() {
+            let precalculated_node = model.precalculate(NODE_SELF, node_state_self);
+            let connections = intra_connections.row(node_local_index_self);
             let precalculated = [
                 &precalculated_neuron_state,
                 &precalculated_node
             ];
             for connection in connections {
-                let node_b_local_index = connection.get_index();
-                let node_b = node_states.slice(s![node_b_local_index, ..]);
+                let node_local_index_other = connection.get_index();
+                let node_state_other = node_states.slice(s![node_local_index_other, ..]);
 
                 let inputs = [
-                    (NODE_B, expand(node_b))
+                    (NODE_OTHER, expand(node_state_other))
                 ];
 
                 let output = model.forward_from_precalc(&inputs, &precalculated);
 
-                let delta_node = squeeze(output[DELTA_NODE_A].view());
-                min_array_inplace(&mut delta_node_states_min.row_mut(node_a_local_index), delta_node);
-                max_array_inplace(&mut delta_node_states_max.row_mut(node_a_local_index), delta_node);
+                let delta_node_self = squeeze(output[DELTA_NODE_SELF].view());
+                min_array_inplace(&mut delta_node_states_min.row_mut(node_local_index_self), delta_node_self);
+                max_array_inplace(&mut delta_node_states_max.row_mut(node_local_index_self), delta_node_self);
 
-                let delta_node = squeeze(output[DELTA_NODE_B].view());
-                min_array_inplace(&mut delta_node_states_min.row_mut(node_b_local_index), delta_node);
-                max_array_inplace(&mut delta_node_states_max.row_mut(node_b_local_index), delta_node);
+                let delta_node_other = squeeze(output[DELTA_NODE_OTHER].view());
+                min_array_inplace(&mut delta_node_states_min.row_mut(node_local_index_other), delta_node_other);
+                max_array_inplace(&mut delta_node_states_max.row_mut(node_local_index_other), delta_node_other);
             }
         }
         let delta_node_states = delta_node_states_max + delta_node_states_min;

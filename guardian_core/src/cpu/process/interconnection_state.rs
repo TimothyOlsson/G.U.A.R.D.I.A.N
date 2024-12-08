@@ -5,16 +5,19 @@ use ndarray::{Array1, Axis};
 use itertools::multizip;
 use ndarray::parallel::prelude::*;
 use rayon::iter::ParallelBridge;
+use rayon::ThreadPool;
 
 use crate::cpu::interface::Network;
-use super::*;
-use crate::node_global_to_local_index;
+use crate::cpu::*;
 
-const NEURON_STATE_A: usize = 0;
-const NEURON_STATE_B: usize = 1;
-const NODE_A: usize = 2;
-const NODE_B: usize = 3;
-const DELTA_NODE: usize = 0;
+// Input
+const NEURON_STATE_SELF: usize = 0;
+const NEURON_STATE_OTHER: usize = 1;
+const NODE_STATE_SELF: usize = 2;
+const NODE_STATE_OTHER: usize = 3;
+
+// Output
+const DELTA_NODE_STATE_SELF: usize = 0;
 
 pub fn update(network: &mut Network, pool: &ThreadPool) {
     let nodes = &network.state.nodes;
@@ -39,23 +42,23 @@ pub fn update(network: &mut Network, pool: &ThreadPool) {
     .into_iter()
     .enumerate()
     .par_bridge()
-    .for_each(|(neuron_a_index, (neuron_state, node_states, inter_connections))| {
-        let node_index_offset = neuron_a_index * g_settings.n_nodes_per_neuron;
+    .for_each(|(neuron_index_self, (neuron_state, node_states, inter_connections))| {
+        let node_index_offset = neuron_index_self * g_settings.n_nodes_per_neuron;
         let neuron_state = unpack_array(neuron_state);
-        let precalculated_forward = model.precalculate(NEURON_STATE_A, neuron_state.view());
+        let precalculated_forward = model.precalculate(NEURON_STATE_SELF, neuron_state.view());
         let precalculated_forward = [&precalculated_forward];
-        let precalculated_backward = model.precalculate(NEURON_STATE_B, neuron_state.view());
+        let precalculated_backward = model.precalculate(NEURON_STATE_OTHER, neuron_state.view());
         let precalculated_backward = [&precalculated_backward];
-        for (node_a_local_index, node_a) in node_states.outer_iter().enumerate() {
-            let mut node_a = unpack_array(node_a);
-            let connection_a = inter_connections.get(node_a_local_index).unwrap();
-            let node_a_global_index = node_a_local_index + node_index_offset;
-            let node_b_global_index = connection_a.get_index();
-            let (neuron_b_index, node_b_local_index) = node_global_to_local_index(node_b_global_index, g_settings);
-            let connection_b = get_inter_connection(neuron_b_index, node_b_local_index, inter_connections_source);
-            let is_connected = check_is_connected(node_a_global_index, connection_b);
-            let (neuron_state_b,  mut node_b) = if is_connected {
-                if node_b_global_index > node_a_global_index { continue; }  // Only highest index calculates if connected
+        for (node_local_index_self, node_state_self) in node_states.outer_iter().enumerate() {
+            let mut node_state_self = unpack_array(node_state_self);
+            let connection_self = inter_connections.get(node_local_index_self).unwrap();
+            let node_global_index_self = node_local_index_self + node_index_offset;
+            let node_global_index_other = connection_self.get_index();
+            let (neuron_b_index, node_b_local_index) = node_global_to_local_index(node_global_index_other, g_settings);
+            let connection_other = get_inter_connection(neuron_b_index, node_b_local_index, inter_connections_source);
+            let is_connected = check_is_connected(node_global_index_self, connection_other);
+            let (neuron_state_other,  mut node_state_other) = if is_connected {
+                if node_global_index_other > node_global_index_self { continue; }  // Only highest index calculates if connected
                 (
                     get_neuron_state(neuron_b_index, neuron_states),
                     get_node(neuron_b_index, node_b_local_index, nodes)
@@ -71,38 +74,37 @@ pub fn update(network: &mut Network, pool: &ThreadPool) {
 
             // Calculate forward
             let inputs = [
-                (NEURON_STATE_B, expand(neuron_state_b.view())),
-                (NODE_A, expand(node_a.view())),
-                (NODE_B, expand(node_b.view()))
+                (NEURON_STATE_OTHER, expand(neuron_state_other.view())),
+                (NODE_STATE_SELF, expand(node_state_self.view())),
+                (NODE_STATE_OTHER, expand(node_state_other.view()))
             ];
-            let delta_node_a = &model.forward_from_precalc(&inputs, &precalculated_forward)[DELTA_NODE];
-            node_a = node_a + squeeze(delta_node_a.view());
+            let delta_node_self = &model.forward_from_precalc(&inputs, &precalculated_forward)[DELTA_NODE_STATE_SELF];
+            node_state_self = node_state_self + squeeze(delta_node_self.view());
 
             // If not connected, this could be skipped
             if is_connected {
                 let inputs = [
-                    (NEURON_STATE_A, expand(neuron_state_b.view())),
-                    (NODE_A, expand(node_b.view())),
-                    (NODE_B, expand(node_a.view()))
+                    (NEURON_STATE_SELF, expand(neuron_state_other.view())),
+                    (NODE_STATE_SELF, expand(node_state_other.view())),
+                    (NODE_STATE_OTHER, expand(node_state_self.view()))
                 ];
-                let delta_node_b = &model.forward_from_precalc(&inputs, &precalculated_backward)[DELTA_NODE];
-                node_b = node_b + squeeze(delta_node_b.view());
-
+                let delta_node_other = &model.forward_from_precalc(&inputs, &precalculated_backward)[DELTA_NODE_STATE_SELF];
+                node_state_other = node_state_other + squeeze(delta_node_other.view());
             }
 
-            let node_a = pack_array(node_a);
-            let node_b = pack_array(node_b);
+            let node_state_self = pack_array(node_state_self);
+            let node_state_other = pack_array(node_state_other);
 
             // Allows for multiple process to work with the same vector without locking
             let ptr = nodes.as_ptr() as *mut u8;
             let to_write = if is_connected {
                 vec![
-                    (node_a_global_index, node_a),
-                    (node_b_global_index, node_b)
+                    (node_global_index_self, node_state_self),
+                    (node_global_index_other, node_state_other)
                 ]
             } else {
                 vec![
-                    (node_a_global_index, node_a),
+                    (node_global_index_self, node_state_self),
                 ]
             };
             let row_size = g_settings.node_size;

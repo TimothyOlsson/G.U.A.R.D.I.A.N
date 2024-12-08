@@ -1,25 +1,35 @@
 use std::time::Instant;
+use std::ops::Range;
 
+use itertools::Itertools;
 use ndarray::{Array1, Array2, Axis};
 use itertools::multizip;
 use ndarray::parallel::prelude::*;
 use rayon::iter::ParallelBridge;
+use rayon::ThreadPool;
+use tracing::trace;
 
+use interface::{CounterIntraConnection, IntraConnection, Network, NodeState};
 use crate::cpu::model::Model;
-use crate::cpu::interface::{IntraConnection, Network};
-use super::*;
 use crate::GuardianSettings;
+use crate::cpu::*;
 
+// Input
 const NEURON_STATE: usize = 0;
-const NODE_A: usize = 1;
-const NODE_B: usize = 2;
-const STRENGTH: usize = 3;
-const PUSHBACK: usize = 4;
+const NODE_STATE_SELF: usize = 1;
+const NODE_STATE_OTHER: usize = 2;
+const FORCE_SELF: usize = 3;
+const FORCE_OTHER: usize = 4;
+
+// Output
+const DELTA_FORCE_SELF: usize = 0;
+const DELTA_FORCE_OTHER: usize = 1;
 
 pub fn update(network: &mut Network, pool: &ThreadPool) {
     let nodes = &network.state.nodes;
     let neuron_states = &network.state.neuron_states;
     let intra_connections = &mut network.state.intra_connections;
+    let inter_connection_counters = &mut network.state.intra_connection_counters;
     let genome = &network.genome;
     let model = &genome.intraconnections_update;
     let g_settings = &network.g_settings;
@@ -29,6 +39,7 @@ pub fn update(network: &mut Network, pool: &ThreadPool) {
             neuron_states.rows(),
             nodes.axis_iter(Axis(0)),
             intra_connections.axis_iter_mut(Axis(0)),
+            inter_connection_counters.axis_iter_mut(Axis(0)),
         )
     );
 
@@ -37,100 +48,108 @@ pub fn update(network: &mut Network, pool: &ThreadPool) {
     .into_iter()
     .enumerate()
     .par_bridge()
-    .for_each(|(_neuron_index, (neuron_state, node_states, mut intra_connections))| {
+    .for_each(|(_neuron_index, (neuron_state, node_states, mut intra_connections, mut counters))| {
         let neuron_state = unpack_array(neuron_state);
         let node_states = unpack_array(node_states.view());
-        let intra_connections_prev = intra_connections.to_owned();  // TODO: Refactor to skip this clone
-
         let precalculated_neuron_state = model.precalculate(NEURON_STATE, neuron_state.view());
-        let mut will_move_connection = Array2::from_elem(
-            (g_settings.n_nodes_per_neuron, g_settings.n_intraconnections_per_node),
-            false
-        );
-        for (node_a_local_index, node_a) in node_states.rows().into_iter().enumerate() {
-            let precalculated_node = model.precalculate(NODE_A, node_a);
+        for (node_local_index_self, node_state_self) in node_states.rows().into_iter().enumerate() {
+            let precalculated_node = model.precalculate(NODE_STATE_SELF, node_state_self);
             let precalculated = [
                 &precalculated_neuron_state,
                 &precalculated_node
             ];
-            let mut node_intra_connections = intra_connections.row_mut(node_a_local_index);
-            let already_connected = node_intra_connections.iter().map(|c| c.get_index()).collect();
+            let mut node_intra_connections = intra_connections.row_mut(node_local_index_self);
             for (connection_index, connection) in node_intra_connections.iter_mut().enumerate() {
-                let main_gradient = update_main_connection(
+                let counter = counters.get_mut((node_local_index_self, connection_index)).unwrap();
+                update_main_connection(
                     connection,
                     model,
                     &precalculated,
                     &node_states
                 );
-                let pending_gradient = update_pending_connection(
-                    &already_connected,
+                update_pending_connection(
                     connection,
                     model,
                     &precalculated,
                     &node_states,
-                    &intra_connections_prev,
-                    g_settings
+                    counter,
+                    g_settings,
                 );
+            }
 
-                // TODO: Is this a good idea?
-                if main_gradient > pending_gradient {
-                    connection.reset_pending();
+            // Compare against each other, the highest main will win and kick out the rest
+            let mut occupied = vec![false; g_settings.n_intraconnections_per_node];
+            for comb in node_intra_connections.iter().enumerate().combinations(2) {
+                let (a_index, a) = comb[0];
+                let (b_index, b) = comb[1];
+
+                let counter_a = counters.get((node_local_index_self, a_index)).unwrap();
+                let counter_b = counters.get((node_local_index_self, b_index)).unwrap();
+
+                if counter_a.get_state(g_settings) == NodeState::Searching || counter_b.get_state(g_settings) == NodeState::Searching {
+                    // One of them is just passing through
+                    continue;
+                } else if a.get_pending_index() != b.get_pending_index() {
+                    // The pending indices the same, it's ok
                     continue;
                 }
-
-                let pending_bond_force = connection.get_pending_bond_force();
-                let bond_force = connection.get_bond_force();
-                if pending_bond_force > bond_force {
-                    //debug!("Bond force for Neuron {neuron_index} Node {node_a_local_index} pending bond force {pending_bond_force} > bond force {bond_force}");
-                    *will_move_connection.get_mut((node_a_local_index, connection_index)).unwrap() = true;
-                }
-            }
-
-            // TODO: Make this cleaner
-            // TODO: Should this code be used or not? Prevents multiple connections. Maybe in another way
-            for connection_index_a in 0..g_settings.n_intraconnections_per_node {
-                for connection_index_b in 0..g_settings.n_intraconnections_per_node {
-                    if connection_index_a == connection_index_b { continue }
-                    let connection_a = node_intra_connections.get(connection_index_a).unwrap();
-                    let connection_b = node_intra_connections.get(connection_index_b).unwrap();
-
-                    // A bit messy logic
-
-                    if connection_a.index == connection_b.index {
-                        if connection_a.get_bond_force() > connection_b.get_bond_force() {
-                            node_intra_connections.get_mut(connection_index_b).unwrap().move_pending_to_main();
-                        } else {
-                            node_intra_connections.get_mut(connection_index_a).unwrap().move_pending_to_main();
-                        }
-                    } else if connection_a.pending_index == connection_b.pending_index {
-                        if connection_a.get_pending_bond_force() > connection_b.get_pending_bond_force() {
-                            node_intra_connections.get_mut(connection_index_b).unwrap().reset_pending();
-                            *will_move_connection.get_mut([node_a_local_index, connection_index_b]).unwrap() = false;
-                        } else {
-                            node_intra_connections.get_mut(connection_index_a).unwrap().reset_pending();
-                            *will_move_connection.get_mut([node_a_local_index, connection_index_a]).unwrap() = false;
-                        }
+                let force_a = a.get_net_pending_force();
+                let force_b = b.get_net_pending_force();
+                if force_a == force_b {
+                    // Highest index wins
+                    if b_index > a_index {
+                        occupied[a_index] = true;
+                    } else {
+                        occupied[b_index] = true;
                     }
+                } else if force_b > force_a {
+                    // kick out a
+                    occupied[a_index] = true;
+                } else if force_a > force_b {
+                    // kick out b
+                    occupied[b_index] = true;
                 }
             }
 
-        }
-
-        // Need to do this last, since otherwise the index will move during the search
-        for node_a_local_index in 0..g_settings.n_nodes_per_neuron {
-            for (connection_index, connection) in intra_connections.row_mut(node_a_local_index).iter_mut().enumerate() {
-                let will_move = *will_move_connection.get((node_a_local_index, connection_index)).unwrap();
-                if will_move {
-                    //debug!("Moving Neuron {neuron_index} Node {node_a_local_index} connection {connection_index} to Node {}", connection.get_pending_index());
-                    connection.move_pending_to_main();
+            let iter = node_intra_connections.iter_mut().zip(occupied).enumerate();
+            for (connection_index, (connection, should_move)) in iter {
+                if should_move {
+                    // If failed, move the pending to the opposite node
+                    let counter = counters.get_mut((node_local_index_self, connection_index)).unwrap();
+                    let new_index = opposite_index(connection.get_pending_index(), g_settings.n_nodes_per_neuron);
+                    connection.reset_pending();
+                    counter.reset();
+                    connection.store_pending_index(new_index);
                 }
             }
-        }
+    }
     });
     pool.install(|| operation);
     trace!("It took {:?} to update intraconnections", now.elapsed());
 }
 
+
+fn get_pending_delta_forces(
+    node_index_other: usize,
+    force_self: f32,
+    force_other: f32,
+    model: &Model,
+    precalculated: &[&Array1<f32>],
+    nodes: &Array2<f32>,
+) -> (f32, f32) {
+    let node_state_other = nodes.slice(s![node_index_other, ..]);
+    let force_self_arr = value_to_array(force_self);
+    let force_other_arr = value_to_array(force_other);
+    let inputs = [
+        (NODE_STATE_OTHER, expand(node_state_other.view())),
+        (FORCE_SELF, force_self_arr.view()),
+        (FORCE_OTHER, force_other_arr.view())
+    ];
+    let output = model.forward_from_precalc(&inputs, precalculated);
+    let delta_force_self = *output[DELTA_FORCE_SELF].first().unwrap();
+    let delta_force_other = *output[DELTA_FORCE_OTHER].first().unwrap();
+    (delta_force_self, delta_force_other)
+}
 
 
 fn update_main_connection(
@@ -138,90 +157,144 @@ fn update_main_connection(
     model: &Model,
     precalculated: &[&Array1<f32>],
     nodes: &Array2<f32>,
-) -> f32 {
-    let node_b_index = connection.get_index();
-    let node_b = nodes.slice(s![node_b_index, ..]);
-    let (strength, pushback) = connection.get_strength_and_pushback();
-    let strength_arr = value_to_array(strength);
-    let pushback_arr = value_to_array(pushback);
+) {
+    let node_index_other = connection.get_index();
+    let node_state_other = nodes.slice(s![node_index_other, ..]);
+    let (force_self, force_other) = connection.get_forces();
+    let force_self_arr = value_to_array(force_self);
+    let force_other_arr = value_to_array(force_other);
     let inputs = [
-        (NODE_B, expand(node_b.view())),
-        (STRENGTH, strength_arr.view()),
-        (PUSHBACK, pushback_arr.view())
+        (NODE_STATE_OTHER, expand(node_state_other.view())),
+        (FORCE_SELF, force_self_arr.view()),
+        (FORCE_OTHER, force_other_arr.view())
     ];
     let output = model.forward_from_precalc(&inputs, precalculated);
-    let connection_params = unpack_connection_model_output(output);
-    connection.store_strength_and_pushback(strength + connection_params.strength, pushback + connection_params.pushback);
-    connection_params.gradient.max(0.0)
+    let delta_force_self = *output[DELTA_FORCE_SELF].first().unwrap();
+    let delta_force_other = *output[DELTA_FORCE_OTHER].first().unwrap();
+    connection.store_forces(force_self + delta_force_self, force_other + delta_force_other);
 }
 
-/// Search neurons side-by-side and the connecting neuron. Same there
-/// TODO: Split function? Very big input
+
+fn get_area_to_search(
+    connection_self: &IntraConnection,
+    g_settings: &GuardianSettings,
+) -> Vec<usize> {
+    // Start with searching neuron and vicinity where pending is index
+    let main_node = connection_self.get_index();
+    let pending_node = connection_self.get_pending_index();
+    let mut n_searched = 0;
+
+    // This could be optimized to skip the vector
+    let mut search = vec![];
+    let mut callback_fn_add_search = |range: Range<isize>, reversed: bool| {
+        for mut node_offset in range {
+            if reversed {
+                node_offset *= -1;
+            }
+            if n_searched >= g_settings.n_intraconnected_nodes_search {
+                n_searched = 0;
+                break;
+            }
+            let node_local_index = wrap_index(pending_node, node_offset, g_settings.n_nodes_per_neuron);
+            if node_local_index == main_node {
+                continue;
+            }
+            search.push(node_local_index);
+            n_searched += 1;
+        }
+    };
+    let range = 0..(g_settings.n_nodes_per_neuron as isize);  // 0 received here added here
+    callback_fn_add_search(range.clone(), false);
+    callback_fn_add_search(range, true);
+    search
+}
+
 fn update_pending_connection(
-    already_connected: &Vec<usize>,
-    connection: &mut IntraConnection,
+    connection_self: &mut IntraConnection,
     model: &Model,
     precalculated: &[&Array1<f32>],
     nodes: &Array2<f32>,
-    intra_connections: &Array2<IntraConnection>,
+    counter: &mut CounterIntraConnection,
     g_settings: &GuardianSettings,
-) -> f32 {
-    let pending_node_index = connection.get_pending_index();
-    let mut index_highest_gradient: usize = 0;
-    let mut params_highest_gradient = ConnectionParams { strength: 0.0, pushback: 0.0, gradient: f32::MIN };
+) {
+    let failed_previous = match counter.get_state(g_settings) {
+        NodeState::Failed => {
+            connection_self.reset_pending_forces();
+            counter.reset();
+            true
+        },
+        _ => false
+    };
 
-    // Start with searching neuron and vicinity where pending is index
-    let node_range = -(g_settings.n_intraconnected_nodes_search as isize)..=(g_settings.n_intraconnected_nodes_search as isize);
-    for node_offset in node_range {
-        let node_b_index = wrap_index(pending_node_index, node_offset, g_settings.n_nodes_per_neuron);
-
-        if already_connected.contains(&node_b_index) { continue }
-
-        let node_b = nodes.slice(s![node_b_index, ..]);
-        let is_pending = pending_node_index == node_b_index;
-        let (strength, pushback) = if is_pending {
-            connection.get_pending_strength_and_pushback()
-        } else {
-            (0.0, 0.0)
-        };
-        let strength_arr = value_to_array(strength);
-        let pushback_arr = value_to_array(pushback);
-        let inputs = [
-            (NODE_B, expand(node_b.view())),
-            (STRENGTH, strength_arr.view()),
-            (PUSHBACK, pushback_arr.view())
-        ];
-        let output = model.forward_from_precalc(&inputs, precalculated);
-        let mut connection_params = unpack_connection_model_output(output);
-        // TODO: Limit to -1.0 and 1.0?
-        connection_params.strength += strength;
-        connection_params.pushback += pushback;
-        if connection_params.gradient > params_highest_gradient.gradient {
-            params_highest_gradient = connection_params;
-            index_highest_gradient = node_b_index;
+    match counter.get_state(g_settings) {
+        NodeState::Searching => {
+            let mut strongest_net_force = f32::MIN;
+            let mut forces = (f32::MIN, f32::MIN);
+            let mut strongest_node_index = 0;  // TODO: What if nothing is searched?
+            let search: Vec<usize> = get_area_to_search(connection_self, g_settings);
+            if search.len() == 0 {  // This search is stuck! It cannot move anywhere. That means the settings are bad
+                connection_self.reset_pending();
+                return;
+            }
+            for node_index in search {
+                let (force_self, force_other) = get_pending_delta_forces(
+                    node_index,
+                    0.0,
+                    0.0,
+                    model,
+                    precalculated,
+                    nodes,
+                );
+                let net_force = force_self + force_other;
+                if net_force > strongest_net_force {
+                    forces = (force_self, force_other);
+                    strongest_net_force = net_force;
+                    strongest_node_index = node_index;
+                }
+            }
+            let pending_index = connection_self.get_pending_index();  // copy
+            connection_self.store_pending_index(strongest_node_index);
+            if failed_previous && strongest_node_index == pending_index {
+                // Stuck in a local maxima. Force reset
+                connection_self.reset_pending();
+            } else if pending_index == strongest_node_index {  // found local maximum, nothing higher around. Attempt connection
+                counter.inc();
+                connection_self.store_pending_forces(forces.0, forces.1);
+            }
+        }
+        NodeState::Connecting => {
+            let node_index_other = connection_self.get_pending_index();
+            let (force_self, force_other) = connection_self.get_pending_forces();
+            let (delta_force_self, delta_force_other) = get_pending_delta_forces(
+                node_index_other,
+                force_self,
+                force_other,
+                model,
+                precalculated,
+                nodes,
+            );
+            let updated_force_self = force_self + delta_force_self;
+            let updated_force_other = force_other + delta_force_other;
+            connection_self.store_pending_forces(
+                updated_force_self,
+                updated_force_other
+            );
+            let net_force = updated_force_self + updated_force_other;  // Store and load might not always be synced! used other values
+            let net_force_to_beat = connection_self.get_net_force();
+            if net_force > net_force_to_beat {
+                counter.saturate();
+            } else {
+                counter.inc();
+            }
+        },
+        NodeState::AttemptingTakeover => {
+            // Nothing to compete to, just do it
+            connection_self.move_pending_to_main();
+            counter.reset();
+        },
+        NodeState::Failed => {
+            connection_self.reset_pending();
+            counter.reset();
         }
     }
-
-    // Search connected nodes
-    for connection in intra_connections.row(pending_node_index) {
-        let node_b_index = connection.get_index();
-
-        if already_connected.contains(&node_b_index) { continue }
-
-        let node_b = nodes.slice(s![node_b_index, ..]);
-        let inputs = [
-            (NODE_B, expand(node_b.view()))
-            // Strength and pushback is always 0!
-        ];
-
-        let output = model.forward_from_precalc(&inputs, precalculated);
-        let connection_params = unpack_connection_model_output(output);
-        if connection_params.gradient > params_highest_gradient.gradient {
-            params_highest_gradient = connection_params;
-            index_highest_gradient = node_b_index;
-        }
-    }
-    connection.store_pending_strength_and_pushback(params_highest_gradient.strength, params_highest_gradient.pushback);
-    connection.store_pending_index(index_highest_gradient);
-    params_highest_gradient.gradient.max(0.0)
 }

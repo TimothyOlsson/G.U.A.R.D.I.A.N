@@ -4,7 +4,7 @@ use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 use anyhow::{ensure, Result};
 use rand::rngs::StdRng;
 
-use super::process::clip;
+use super::clip;
 
 pub type Row = Array1<f32>;
 pub type Array = Array2<f32>;

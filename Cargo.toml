@@ -1,5 +1,5 @@
 [workspace]
-members = [ "archive/egui_test",
+members = [
     "guardian_core"
 ]
 resolver = "2"

@@ -1,16 +1,20 @@
 use std::time::Instant;
 
-use tracing::{trace, debug};
+use tracing::trace;
 use ndarray::Axis;
 use itertools::multizip;
 use ndarray::parallel::prelude::*;
 use rayon::iter::ParallelBridge;
+use rayon::ThreadPool;
 
 use crate::cpu::interface::Network;
-use super::*;
+use crate::cpu::*;
 
+// Input
 const NEURON_STATE: usize = 0;
 const NODE: usize = 1;
+
+// Output
 const DELTA_NEURON_STATE: usize = 0;
 const DELTA_NODE: usize = 1;
 
@@ -51,9 +55,7 @@ pub fn update(network: &mut Network, pool: &ThreadPool) {
             node_source.assign(&node);
         }
         let delta_neuron_state = delta_neuron_state_max + delta_neuron_state_min;
-        debug!("{delta_neuron_state:?}");
         let updated_neuron_state = neuron_state + delta_neuron_state;
-
         let updated_neuron_state = pack_array(updated_neuron_state);
         neuron_state_source.assign(&updated_neuron_state);
     });

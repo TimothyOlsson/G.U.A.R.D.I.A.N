@@ -324,7 +324,7 @@ function plot_node_details() {
 }
 
 function update_selected_connection() {
-    var connection = nip.selection.connection;
+    var connection = nip.selection;
     if (connection.connection_id == null) {
         // This is an interconnection or pending interconnection
         var [neuron, node] = connection.source;
@@ -352,15 +352,15 @@ function plot_connection_details() {
     clear_chart(chart_details);
     var connection = nip.selection;
     var id = connection.connection_id;
-    var strength = connection.strength;
-    var pushback = connection.pushback;
-    var force = get_force(connection);
+    var force_self = connection.force_self;
+    var force_other = connection.force_other;
+    var net_force = get_net_force(connection);
 
     var [neuron, node] = connection.source;
 
-    var strengths = [strength];
-    var forces = [force];
-    var pushbacks = [pushback];
+    var forces_self = [force_self];
+    var forces_other = [force_other];
+    var net_forces = [net_force];
 
     // TODO: This thing is really messy
     if (connection.type == "inter") {
@@ -369,9 +369,9 @@ function plot_connection_details() {
         if (connection.connected) {
             var connection_b = get_other_interconnection(connection, connections);
             categories.push(`Connected\n[${connection_b.source}] -> [${connection_b.target}]`);
-            strengths.push(connection_b.strength);
-            forces.push(get_force(connection_b));
-            pushbacks.push(connection_b.pushback);
+            forces_self.push(connection_b.force_self);
+            forces_other.push(connection_b.force_other);
+            net_forces.push(get_net_force(connection_b));
         }
     } else if (connection.type == "p_inter") {
         var categories = [`Selected\n[${connection.source}] -> [${connection.target}]`];
@@ -379,38 +379,37 @@ function plot_connection_details() {
         var connection_b = get_other_interconnection(connection, connections);
         if (connection_b.connected) {
             categories.push(`[${connection_b.source}] -> [${connection_b.target}]`);
-            strengths.push(connection_b.strength);
-            forces.push(get_force(connection_b));
-            pushbacks.push(connection_b.pushback);
+            forces_self.push(connection_b.force_self);
+            forces_other.push(connection_b.force_other);
+            net_forces.push(get_net_force(connection_b));
             var connection_c = get_other_interconnection(connection_b, connections);
             categories.push(`[${connection_c.source}] -> [${connection_c.target}]`);
-            strengths.push(connection_c.strength);
-            forces.push(get_force(connection_c));
-            pushbacks.push(connection_c.pushback);
+            forces_self.push(connection_c.force_self);
+            forces_other.push(connection_c.force_other);
+            net_forces.push(get_net_force(connection_c));
         } else {
             categories.push(`[${connection_b.source}] -> null`);
-            strengths.push(0);
-            forces.push(0);
-            pushbacks.push(0);
+            forces_self.push(0);
+            forces_other.push(0);
+            net_forces.push(0);
         }
     } else if (connection.type == "intra") {
         var connections = pending_intraconnections[nip.timestep];
         var categories = [`Connection ${id}\n[${connection.source}] -> [${connection.target}]`];
         var pending = connections[neuron][node][id];
         categories.push(`Pending ${id}\n[${pending.source}] -> [${pending.target}]`);
-        strengths.push(pending.strength);
-        forces.push(get_force(pending));
-        pushbacks.push(pending.pushback);
+        forces_self.push(pending.force_self);
+        forces_other.push(pending.force_other);
+        net_forces.push(get_net_force(pending));
     } else if (connection.type == "p_intra") {
         var connections = intraconnections[nip.timestep];
         var categories = [`Pending ${id}\n[${connection.source}] -> [${connection.target}]`];
         var not_pending = connections[neuron][node][id];  // TODO: Change name
         categories.push(`Connection ${id}\n[${not_pending.source}] -> [${not_pending.target}]`);
-        strengths.push(not_pending.strength);
-        forces.push(get_force(not_pending));
-        pushbacks.push(not_pending.pushback);
+        forces_self.push(not_pending.force_self);
+        forces_other.push(not_pending.force_other);
+        net_forces.push(get_net_force(not_pending));
     }
-    pushbacks = pushbacks.map(pushback => -1 * pushback);  // Flip
     var option = {
         xAxis: {
             type: 'category',
@@ -418,28 +417,28 @@ function plot_connection_details() {
         },
         yAxis: {
             type: 'value',
-            min: -255,
-            max: 255,
+            min: -254.0,
+            max: 254.0,
         },
         tooltip: {},
         label : {show: true},
         series: [
             {
                 type: 'bar',
-                name: 'strength',
-                data: strengths,
+                name: 'force_self',
+                data: forces_self,
                 color: lightgreen
             },
             {
                 type: 'bar',
-                name: 'force',
-                data: forces,
+                name: 'net_force',
+                data: net_forces,
                 color: lightblue,
             },
             {
                 type: 'bar',
-                name: 'pushback',
-                data: pushbacks,
+                name: 'force_other',
+                data: forces_other,
                 color: lightred
             },
         ]
@@ -447,8 +446,8 @@ function plot_connection_details() {
     chart_details.setOption(option);
 }
 
-function get_force(connection) {
-    return Math.max((connection.strength - connection.pushback), 0.0);
+function get_net_force(connection) {
+    return (connection.force_self + connection.force_other);
 }
 
 function get_other_interconnection(connection, connections) {
@@ -483,7 +482,7 @@ function is_higher(connection_a, connection_b) {
 }
 
 function init_links() {
-    var link_width_k = 1.5 / 255;  // 0 to 255
+    var link_width_k = 1.5 / 254;  // 0 to 254
     var link_width_m = 0.25;
     var index = 0;
     for (var connection_type of [interconnections, pending_interconnections, intraconnections, pending_intraconnections]) {
@@ -530,21 +529,19 @@ function init_links() {
                         if (!connection.show) {
                             connection.lineStyle.color = lightblue;
                         }
-                        var force_a = get_force(connection);
-                        var force_b = get_force(connection_b);
-                        force = Math.max(force_a, force_b);
+                        force = get_net_force(connection);
                     } else {
                         // Not connected, but can be used for pending search
                         connection.lineStyle.type = "dashed";
                         connection.lineStyle.color = lightred;
                         connection.symbol = forward;
-                        force = 127;
+                        force = 0;
                     }
                 } else {
-                    force = get_force(connection);
+                    force = get_net_force(connection);
                 }
                 // Calculate width
-                var width = link_width_k * force + link_width_m;
+                var width = link_width_k * Math.max((force + 2.0), 0) + link_width_m;
                 connection.lineStyle.width = width;
             }
         }
@@ -647,10 +644,10 @@ function update_chart_details() {
     }
     switch (nip.selection_type) {
         case SelectionType.Neuron:
-            plot_neuron_details();
+            //plot_neuron_details();
             break;
         case SelectionType.Node:
-            plot_node_details();
+            //plot_node_details();
             break;
         case SelectionType.Connection:
             update_selected_connection();
