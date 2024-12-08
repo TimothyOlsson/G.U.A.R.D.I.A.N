@@ -16,7 +16,7 @@ pub struct CounterInterConnection(AtomicU8);
 #[derive(Debug, Clone)]
 pub struct CounterIntraConnection(u8);
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum NodeState {
     Searching,
     Connecting,

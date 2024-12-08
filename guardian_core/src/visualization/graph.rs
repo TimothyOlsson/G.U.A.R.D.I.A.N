@@ -95,7 +95,7 @@ pub fn visualize_network(state_history: Vec<State>, g_settings: &GuardianSetting
         let counters = state.inter_connection_counters.indexed_iter().map(|((_, _), counter)| {
             let value = counter.get_value();
             let state = counter.get_state(g_settings);
-            format!("{{ value: {value}, state: \"{state:?}\" }}")
+            format!("{{ value: {value}, state: '{state:?}' }}")
         })
         .collect();
         let counters = Array::from_shape_vec(state.inter_connection_counters.shape(), counters).unwrap();
@@ -106,7 +106,7 @@ pub fn visualize_network(state_history: Vec<State>, g_settings: &GuardianSetting
         let counters = state.intra_connection_counters.indexed_iter().map(|((_, _, _), counter)| {
             let value = counter.get_value();
             let state = counter.get_state(g_settings);
-            format!("{{ value: {value}, state: \"{state:?}\" }}")
+            format!("{{ value: {value}, state: '{state:?}' }}")
         })
         .collect();
         let counters = Array::from_shape_vec(state.intra_connection_counters.shape(), counters).unwrap();

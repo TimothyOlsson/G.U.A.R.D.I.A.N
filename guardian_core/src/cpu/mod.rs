@@ -14,6 +14,14 @@ pub fn wrap_index(local_index: usize, offset: isize, max_index: usize) -> usize 
     ) as usize
 }
 
+/// If there are N nodes in a circle, take the "opposite" node in the circle
+/// Assumes the max_index is divisible by 2
+pub fn opposite_index(local_index: usize, max_index: usize) -> usize {
+    (
+        (local_index + max_index / 2) % max_index
+    ) as usize
+}
+
 pub fn pack(value: f32) -> u8 {
     (value.clamp(0.0, 1.0) * 255.0).round() as u8
 }

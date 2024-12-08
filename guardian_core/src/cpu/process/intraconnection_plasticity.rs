@@ -78,33 +78,48 @@ pub fn update(network: &mut Network, pool: &ThreadPool) {
             }
 
             // Compare against each other, the highest main will win and kick out the rest
-            let mut disconnect = vec![false; g_settings.n_intraconnections_per_node];
+            let mut occupied = vec![false; g_settings.n_intraconnections_per_node];
             for comb in node_intra_connections.iter().enumerate().combinations(2) {
                 let (a_index, a) = comb[0];
                 let (b_index, b) = comb[1];
-                if a.get_index() != b.get_index() {
-                    continue;  // Not the same
+
+                let counter_a = counters.get((node_local_index_self, a_index)).unwrap();
+                let counter_b = counters.get((node_local_index_self, b_index)).unwrap();
+
+                if counter_a.get_state(g_settings) == NodeState::Searching || counter_b.get_state(g_settings) == NodeState::Searching {
+                    // One of them is just passing through
+                    continue;
+                } else if a.get_pending_index() != b.get_pending_index() {
+                    // The pending indices the same, it's ok
+                    continue;
                 }
-                let force_a = a.get_net_force();
-                let force_b = b.get_net_force();
+                let force_a = a.get_net_pending_force();
+                let force_b = b.get_net_pending_force();
                 if force_a == force_b {
                     // Highest index wins
                     if b_index > a_index {
-                        disconnect[a_index] = true;
+                        occupied[a_index] = true;
                     } else {
-                        disconnect[b_index] = true;
+                        occupied[b_index] = true;
                     }
                 } else if force_b > force_a {
                     // kick out a
-                    disconnect[a_index] = true;
+                    occupied[a_index] = true;
                 } else if force_a > force_b {
                     // kick out b
-                    disconnect[b_index] = true;
+                    occupied[b_index] = true;
                 }
             }
-            for (connection, should_disconnect) in node_intra_connections.iter_mut().zip(disconnect) {
-                if should_disconnect {
+
+            let iter = node_intra_connections.iter_mut().zip(occupied).enumerate();
+            for (connection_index, (connection, should_move)) in iter {
+                if should_move {
+                    // If failed, move the pending to the opposite node
+                    let counter = counters.get_mut((node_local_index_self, connection_index)).unwrap();
+                    let new_index = opposite_index(connection.get_pending_index(), g_settings.n_nodes_per_neuron);
                     connection.reset_pending();
+                    counter.reset();
+                    connection.store_pending_index(new_index);
                 }
             }
     }
@@ -165,6 +180,7 @@ fn get_area_to_search(
     g_settings: &GuardianSettings,
 ) -> Vec<usize> {
     // Start with searching neuron and vicinity where pending is index
+    let main_node = connection_self.get_index();
     let pending_node = connection_self.get_pending_index();
     let mut n_searched = 0;
 
@@ -180,6 +196,9 @@ fn get_area_to_search(
                 break;
             }
             let node_local_index = wrap_index(pending_node, node_offset, g_settings.n_nodes_per_neuron);
+            if node_local_index == main_node {
+                continue;
+            }
             search.push(node_local_index);
             n_searched += 1;
         }
