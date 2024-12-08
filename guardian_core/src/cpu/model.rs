@@ -31,12 +31,12 @@ pub struct Model {
 #[allow(unused)]
 pub struct ModelSettings {
     // Easier for GPU calculations
-    n_inputs: usize,
-    n_hidden: usize,
-    n_outputs: usize,
-    input_sizes: Vec<usize>,
-    hidden_sizes: Vec<usize>,
-    output_sizes: Vec<usize>
+    pub n_inputs: usize,
+    pub n_hidden: usize,
+    pub n_outputs: usize,
+    pub input_sizes: Vec<usize>,
+    pub hidden_sizes: Vec<usize>,
+    pub output_sizes: Vec<usize>
 }
 
 impl ModelSettings {
@@ -95,15 +95,13 @@ impl Model {
     pub fn forward_from_precalc(
         &self,
         inputs: &[(usize, ArrayView2<f32>)],
-        precalculated: &[&Row],
+        precalculated: &Row,
     ) -> Vec<Array> {
         let batch_size = inputs.first().unwrap().1.shape()[0];
         let mut x: Array = Array2::zeros((batch_size, self.input_bias.len()));
 
         // Add precalc
-        for precalc in precalculated {
-            x = x + *precalc;
-        }
+        x = x + precalculated;
 
         // Add inputs not precalculated
         for (i, input) in inputs {
@@ -214,7 +212,7 @@ pub mod tests {
         println!("INPUT2:\n{x2:#?}");
         let res = model.forward_from_precalc(
             &[(0, x1.view()), (1, x2.view())],
-            &[]
+            &Array1::zeros(8)
         );
         println!("OUTPUT:\n{res:#?}");
     }

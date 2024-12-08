@@ -31,7 +31,7 @@ pub fn update(network: &mut Network, pool: &ThreadPool) {
     let intra_connections = &mut network.state.intra_connections;
     let inter_connection_counters = &mut network.state.intra_connection_counters;
     let genome = &network.genome;
-    let model = &genome.intraconnections_update;
+    let model = &genome.intraconnections_plasticity_update;
     let g_settings = &network.g_settings;
 
     let zipped = multizip(
@@ -51,13 +51,10 @@ pub fn update(network: &mut Network, pool: &ThreadPool) {
     .for_each(|(_neuron_index, (neuron_state, node_states, mut intra_connections, mut counters))| {
         let neuron_state = unpack_array(neuron_state);
         let node_states = unpack_array(node_states.view());
-        let precalculated_neuron_state = model.precalculate(NEURON_STATE, neuron_state.view());
+        let precalculated_neuron_state_self = model.precalculate(NEURON_STATE, neuron_state.view());
         for (node_local_index_self, node_state_self) in node_states.rows().into_iter().enumerate() {
-            let precalculated_node = model.precalculate(NODE_STATE_SELF, node_state_self);
-            let precalculated = [
-                &precalculated_neuron_state,
-                &precalculated_node
-            ];
+            let precalculated_node_state_self = model.precalculate(NODE_STATE_SELF, node_state_self);
+            let precalculated = &precalculated_neuron_state_self + precalculated_node_state_self;
             let mut node_intra_connections = intra_connections.row_mut(node_local_index_self);
             for (connection_index, connection) in node_intra_connections.iter_mut().enumerate() {
                 let counter = counters.get_mut((node_local_index_self, connection_index)).unwrap();
@@ -134,7 +131,7 @@ fn get_pending_delta_forces(
     force_self: f32,
     force_other: f32,
     model: &Model,
-    precalculated: &[&Array1<f32>],
+    precalculated: &Array1<f32>,
     nodes: &Array2<f32>,
 ) -> (f32, f32) {
     let node_state_other = nodes.slice(s![node_index_other, ..]);
@@ -155,7 +152,7 @@ fn get_pending_delta_forces(
 fn update_main_connection(
     connection: &mut IntraConnection,
     model: &Model,
-    precalculated: &[&Array1<f32>],
+    precalculated: &Array1<f32>,
     nodes: &Array2<f32>,
 ) {
     let node_index_other = connection.get_index();
@@ -212,7 +209,7 @@ fn get_area_to_search(
 fn update_pending_connection(
     connection_self: &mut IntraConnection,
     model: &Model,
-    precalculated: &[&Array1<f32>],
+    precalculated: &Array1<f32>,
     nodes: &Array2<f32>,
     counter: &mut CounterIntraConnection,
     g_settings: &GuardianSettings,

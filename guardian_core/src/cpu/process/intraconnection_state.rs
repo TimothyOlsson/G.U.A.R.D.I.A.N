@@ -41,17 +41,14 @@ pub fn update(network: &mut Network, pool: &ThreadPool) {
     .par_bridge()
     .for_each(|(neuron_state, mut node_states_source, intra_connections)| {
         let neuron_state = unpack_array(neuron_state);
-        let precalculated_neuron_state = model.precalculate(NEURON_STATE, neuron_state.view());
+        let precalculated_neuron_state_self = model.precalculate(NEURON_STATE, neuron_state.view());
         let node_states = unpack_array(node_states_source.view());
         let mut delta_node_states_min = Array2::from_elem((g_settings.n_nodes_per_neuron, g_settings.node_size), 0.0);
         let mut delta_node_states_max = Array2::from_elem((g_settings.n_nodes_per_neuron, g_settings.node_size), 0.0);
         for (node_local_index_self, node_state_self) in node_states.rows().into_iter().enumerate() {
-            let precalculated_node = model.precalculate(NODE_SELF, node_state_self);
+            let precalculated_node_state_self = model.precalculate(NODE_SELF, node_state_self);
             let connections = intra_connections.row(node_local_index_self);
-            let precalculated = [
-                &precalculated_neuron_state,
-                &precalculated_node
-            ];
+            let precalculated = &precalculated_neuron_state_self + precalculated_node_state_self;
             for connection in connections {
                 let node_local_index_other = connection.get_index();
                 let node_state_other = node_states.slice(s![node_local_index_other, ..]);

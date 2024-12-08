@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicI8, AtomicU32, AtomicU8, Ordering};
 
 use ndarray::prelude::*;
@@ -44,11 +45,11 @@ pub struct Genome {
     pub interconnected_node_state_update: Model,
     pub intraconnected_node_state_update: Model,
     pub neuron_state_update: Model,
-    pub interconnections_update: Model,
-    pub intraconnections_update: Model,
+    pub interconnections_plasticity_update: Model,
+    pub intraconnections_plasticity_update: Model,
 
     // Interactions
-    // TODO: Add genome for ports and other such things!
+    pub io_models: BTreeMap<String, Model>,
 }
 
 #[derive(Clone)]
@@ -488,7 +489,6 @@ impl State {
 impl Genome {
     pub fn new(
         g_settings: &GuardianSettings,
-        _n_settings: &NetworkSettings,  // TODO: Add models for IO
         mut rng: Option<StdRng>
     ) -> Self {
         if rng.is_none() {
@@ -499,27 +499,36 @@ impl Genome {
         // Interconnected
         let settings = ModelSettings::new(
             vec![
-                g_settings.neuron_state_size,
-                g_settings.neuron_state_size,
-                g_settings.node_size,
-                g_settings.node_size
+                g_settings.neuron_state_size,  // neuron_state_self
+                g_settings.neuron_state_size,  // neuron_state_other
+                g_settings.node_size,  // node_state_self
+                g_settings.node_size,  // node_state_other
+                1,  // force_self,
+                1,  // force_other,
+                1,  // is main
+                1,  // is pending
             ],
             g_settings.hidden_sizes.clone(),
-            vec![g_settings.node_size],
+            vec![
+                g_settings.node_size,  // delta_node_state_self,
+                1  // delta_force_self
+            ],
         ).unwrap();
         let interconnected_node_state_update = Model::new(settings, &mut rng).unwrap();
 
         // Intraconnected
         let settings = ModelSettings::new(
             vec![
-                g_settings.neuron_state_size,
-                g_settings.node_size,
-                g_settings.node_size,
+                g_settings.neuron_state_size,  // neuron_state
+                g_settings.node_size,  // node_state_self
+                g_settings.node_size,  // node_state_other,
+                1,  // force_self (needed?)
+                1,  // force_other (needed?)
             ],
             g_settings.hidden_sizes.clone(),
             vec![
-                g_settings.node_size,
-                g_settings.node_size
+                g_settings.node_size,  // delta_node_self
+                g_settings.node_size,  // delta_node_other
             ],
         ).unwrap();
         let intraconnected_node_state_update = Model::new(settings, &mut rng).unwrap();
@@ -538,7 +547,7 @@ impl Genome {
         ).unwrap();
         let neuron_state_update = Model::new(settings, &mut rng).unwrap();
 
-        // Interconnections
+        // Interconnections plasticity
         let settings = ModelSettings::new(
             vec![
                 g_settings.neuron_state_size,
@@ -547,13 +556,17 @@ impl Genome {
                 g_settings.node_size,
                 1, // force_self
                 1, // force_other
+                1,  // is main
+                1,  // is pending
             ],
             g_settings.hidden_sizes.clone(),
-            vec![1],  // delta_force_self,
+            vec![
+                1  // delta_force_self
+            ],
         ).unwrap();
-        let interconnections_update = Model::new(settings, &mut rng).unwrap();
+        let interconnections_plasticity_update = Model::new(settings, &mut rng).unwrap();
 
-        // Intraconnections
+        // Intraconnections plasticity
         let settings = ModelSettings::new(
             vec![
                 g_settings.neuron_state_size,
@@ -561,18 +574,42 @@ impl Genome {
                 g_settings.node_size,
                 1, // force_self
                 1, // force_other
+                1,  // is main
+                1,  // is pending
             ],
             g_settings.hidden_sizes.clone(),
-            vec![1, 1],  // delta_force_self
+            vec![
+                1,  // delta_force_self
+                1,  // delta_force_other
+            ],
         ).unwrap();
-        let intraconnections_update = Model::new(settings, &mut rng).unwrap();
+        let intraconnections_plasticity_update = Model::new(settings, &mut rng).unwrap();
+
+        // Base for IO models. More can be added later
+        let mut io_models = BTreeMap::new();
+        let settings = ModelSettings::new(
+            vec![
+                g_settings.neuron_state_size,
+                g_settings.nexus_size,  // nexus_read
+                g_settings.nexus_size,  // nexus_write
+            ],
+            g_settings.hidden_sizes.clone(),
+            vec![
+                g_settings.nexus_size,  // delta_nexus
+                g_settings.neuron_state_size,  // delta_neuron_write
+            ],
+        ).unwrap();
+        let nexus_update = Model::new(settings, &mut rng).unwrap();
+        io_models.insert("nexus".to_string(), nexus_update.clone());
+
 
         Self {
             interconnected_node_state_update,
             intraconnected_node_state_update,
+            interconnections_plasticity_update,
+            intraconnections_plasticity_update,
             neuron_state_update,
-            interconnections_update,
-            intraconnections_update,
+            io_models
         }
     }
 }

@@ -25,4 +25,6 @@ pub fn update(network: &mut Network, pool: &ThreadPool) {
     interconnection_plasticity::update(network, pool);
     trace!("Stage 6: Update intraconnections (plasticity)");
     intraconnection_plasticity::update(network, pool);
+    trace!("Stage 7: Update IO ports");
+    io_ports::update(network, pool);
 }

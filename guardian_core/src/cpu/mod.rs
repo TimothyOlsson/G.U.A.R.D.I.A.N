@@ -152,7 +152,7 @@ pub mod test {
         let n_settings = NetworkSettings::downlevel_default();
         get_network_size(&g_settings, &n_settings);
         let rng = rand::rngs::StdRng::seed_from_u64(1);
-        let genome = Genome::new(&g_settings, &n_settings, Some(rng.clone()));
+        let genome = Genome::new(&g_settings, Some(rng.clone()));
         let mut state = State::new(&g_settings, &n_settings);
         debug!("Randomizing");
         state.randomize(&g_settings, &n_settings, Some(rng));

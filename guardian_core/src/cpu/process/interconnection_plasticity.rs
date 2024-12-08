@@ -39,7 +39,7 @@ fn update_connections(network: &mut Network, pool: &ThreadPool) {
 
     let g_settings = &network.g_settings;
     let n_settings = &network.n_settings;
-    let model = &genome.interconnections_update;
+    let model = &genome.interconnections_plasticity_update;
 
     let zipped = multizip(
         (
@@ -56,30 +56,31 @@ fn update_connections(network: &mut Network, pool: &ThreadPool) {
     .enumerate()
     .par_bridge()
     .for_each(|(neuron_index_self, (neuron_state, node_states, inter_connections, counters))| {
-        let neuron_state = unpack_array(neuron_state);
-        let precalculated_neuron_state_self = model.precalculate(NEURON_STATE_SELF, neuron_state.view());
-        let precalculated_neuron_state_other = model.precalculate(NEURON_STATE_OTHER, neuron_state.view());
         let node_index_offset = neuron_index_self * g_settings.n_nodes_per_neuron;
-        for (node_local_index_self, node_self) in node_states.rows().into_iter().enumerate() {
+
+        // Done here, so it can be used for all nodes in the neuron
+        let neuron_state = unpack_array(neuron_state);
+        let precalculated_neuron_forward = model.precalculate(NEURON_STATE_SELF, neuron_state.view());
+        let precalculated_neuron_backward = model.precalculate(NEURON_STATE_OTHER, neuron_state.view());
+
+        for (node_local_index_self, node_self) in node_states.outer_iter().enumerate() {
             let node_global_index_self = node_local_index_self + node_index_offset;
             let connection_self = inter_connections.get(node_local_index_self).unwrap();
             let node_self = unpack_array(node_self);
             let counter_self = counters.get(node_local_index_self).unwrap();
-            let precalculated_node_self = model.precalculate(NODE_SELF, node_self.view());
-            let precalculated_node_other = model.precalculate(NODE_OTHER, node_self.view());
 
-            // This is not that nice
-            let precalculated = [
-                &precalculated_neuron_state_self,
-                &precalculated_node_self,
-                &precalculated_neuron_state_other,
-                &precalculated_node_other
-            ];
+            let precalculated_node_forward = model.precalculate(NODE_SELF, node_self.view());
+            let precalculated_node_backward = model.precalculate(NODE_OTHER, node_self.view());
+
+            let precalculated_forward = &precalculated_neuron_forward + precalculated_node_forward;
+            let precalculated_backward = &precalculated_neuron_backward + precalculated_node_backward;
+
             update_main_connection(
                 node_global_index_self,
                 connection_self,
                 model,
-                &precalculated,
+                &precalculated_forward,
+                &precalculated_backward,
                 nodes,
                 neuron_states,
                 inter_connections_source,
@@ -90,7 +91,8 @@ fn update_connections(network: &mut Network, pool: &ThreadPool) {
                 connection_self,
                 counter_self,
                 model,
-                &precalculated,
+                &precalculated_forward,
+                &precalculated_backward,
                 nodes,
                 neuron_states,
                 inter_connections_source,
@@ -108,7 +110,8 @@ fn update_main_connection(
     node_global_index_self: usize,
     connection_self: &InterConnection,
     model: &Model,
-    precalculated: &[&Array1<f32>],
+    precalculated_forward: &Array1<f32>,
+    precalculated_backward: &Array1<f32>,
     nodes: &Array3<u8>,
     neuron_states: &Array2<u8>,
     inter_connections: &Array2<InterConnection>,
@@ -134,7 +137,8 @@ fn update_main_connection(
         force_self,
         force_other,
         model,
-        precalculated,
+        precalculated_forward,
+        precalculated_backward,
         nodes,
         neuron_states
     );
@@ -151,7 +155,8 @@ fn update_pending_connection(
     connection_self: &InterConnection,
     counter: &CounterInterConnection,
     model: &Model,
-    precalculated: &[&Array1<f32>],
+    precalculated_forward: &Array1<f32>,
+    precalculated_backward: &Array1<f32>,
     nodes: &Array3<u8>,
     neuron_states: &Array2<u8>,
     inter_connections: &Array2<InterConnection>,
@@ -183,7 +188,8 @@ fn update_pending_connection(
                     0.0,
                     0.0,
                     model,
-                    precalculated,
+                    precalculated_forward,
+                    precalculated_backward,
                     nodes,
                     neuron_states
                 );
@@ -216,7 +222,8 @@ fn update_pending_connection(
                 force_self,
                 force_other,
                 model,
-                precalculated,
+                precalculated_forward,
+                precalculated_backward,
                 nodes,
                 neuron_states
             );
@@ -286,7 +293,8 @@ fn get_delta_forces(
     force_self: f32,
     force_other: f32,
     model: &Model,
-    precalculated: &[&Array1<f32>],
+    precalculated_forward: &Array1<f32>,
+    precalculated_backward: &Array1<f32>,
     nodes: &Array3<u8>,
     neuron_states: &Array2<u8>,
 ) -> (f32, f32) {
@@ -304,7 +312,7 @@ fn get_delta_forces(
         (FORCE_SELF, force_self.view()),
         (FORCE_OTHER, force_other.view())
     ];
-    let output = model.forward_from_precalc(&inputs, &precalculated[0..2]);  // neuron_self, node_self
+    let output = model.forward_from_precalc(&inputs, precalculated_forward);  // neuron_self, node_self
     let delta_force_self = *output[DELTA_FORCE_SELF].first().unwrap();
 
     // other -> self
@@ -314,7 +322,7 @@ fn get_delta_forces(
         (FORCE_SELF, force_other.view()),
         (FORCE_OTHER, force_self.view())
     ];
-    let output = model.forward_from_precalc(&inputs, &precalculated[2..]);  // neuron_other, node_other
+    let output = model.forward_from_precalc(&inputs, precalculated_backward);  // neuron_other, node_other
     let delta_force_other = *output[DELTA_FORCE_SELF].first().unwrap();
 
     (delta_force_self, delta_force_other)

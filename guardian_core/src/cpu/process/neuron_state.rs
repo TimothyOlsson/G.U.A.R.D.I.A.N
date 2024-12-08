@@ -38,7 +38,7 @@ pub fn update(network: &mut Network, pool: &ThreadPool) {
     .par_bridge()
     .for_each(|(mut neuron_state_source, mut node_states_source)| {
         let neuron_state = unpack_array(neuron_state_source.view());
-        let precalculated = [&model.precalculate(NEURON_STATE, neuron_state.view())];
+        let precalculated = &model.precalculate(NEURON_STATE, neuron_state.view());
         let mut delta_neuron_state_min = Array1::from_elem(g_settings.neuron_state_size, 0.0);
         let mut delta_neuron_state_max = Array1::from_elem(g_settings.neuron_state_size, 0.0);
         for mut node_source in node_states_source.rows_mut().into_iter() {
@@ -46,7 +46,7 @@ pub fn update(network: &mut Network, pool: &ThreadPool) {
             let inputs = [
                 (NODE, expand(node.view()))
             ];
-            let output = &model.forward_from_precalc(&inputs, &precalculated);
+            let output = &model.forward_from_precalc(&inputs, precalculated);
             let delta_neuron_state = squeeze(output[DELTA_NEURON_STATE].view());
             min_array_inplace(&mut delta_neuron_state_min.view_mut(), delta_neuron_state);
             max_array_inplace(&mut delta_neuron_state_max.view_mut(), delta_neuron_state);

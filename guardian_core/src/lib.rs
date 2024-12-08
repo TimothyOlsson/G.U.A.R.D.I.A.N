@@ -139,7 +139,7 @@ pub struct GuardianSettings {
     pub intraconnection_max_search_time: usize,
 
     // Network
-    // TODO: Add sizes?
+    pub nexus_size: usize,
 
     // IO
     // TODO: Add io sizes? Dynamic?
@@ -153,7 +153,6 @@ pub struct NetworkSettings {
     pub n_neurons: usize,
     pub n_io_ports: usize,
     pub n_network_ports: usize,
-    pub neurons_per_network_connection: usize,
 }
 
 impl Default for NetworkSettings {
@@ -162,7 +161,6 @@ impl Default for NetworkSettings {
             n_neurons: 64,
             n_io_ports: 0,
             n_network_ports: 0,
-            neurons_per_network_connection: 16
         }
     }
 }
@@ -173,7 +171,6 @@ impl NetworkSettings {
             n_neurons: 16,
             n_io_ports: 0,
             n_network_ports: 0,
-            neurons_per_network_connection: 0
         }
     }
 }
@@ -192,6 +189,7 @@ impl Default for GuardianSettings {
             intraconnection_max_connection_time: 8,
             interconnection_max_search_time: 8,
             intraconnection_max_search_time: 8,
+            nexus_size: 16,
             hidden_sizes: vec![64, 64]
         }
     }
@@ -211,6 +209,7 @@ impl GuardianSettings {
             intraconnection_max_connection_time: 8,
             interconnection_max_search_time: 8,
             intraconnection_max_search_time: 8,
+            nexus_size: 16,
             hidden_sizes: vec![64, 64]
         }
     }
