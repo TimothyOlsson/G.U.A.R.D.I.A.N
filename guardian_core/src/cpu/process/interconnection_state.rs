@@ -137,7 +137,6 @@ fn update_node_state(
     let output = &model.forward_from_precalc(&inputs, precalculated_forward);
     let delta_node_self = &output[DELTA_NODE_STATE_SELF];
     node_state_self = node_state_self + squeeze(delta_node_self.view());
-    drop(inputs);
 
     unsafe {
         write_node_non_locking_write(nodes, node_state_self, node_global_index_other, g_settings);
